@@ -1,27 +1,24 @@
 /**
  * @file compileCircuit.js
- * @notice Compiles Circom 2.0+ circuit to R1CS, WASM, and SYM representations,
- *         and sets up the Groth16 zkey using Hermez Powers of Tau for BN128 curve.
+ * @notice Compiles Circom circuit to R1CS, WASM, and SYM representations.
  */
 
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
-const snarkjs = require("snarkjs");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const CIRCUITS_DIR = path.join(ROOT_DIR, "circuits");
 const BUILD_DIR = path.join(CIRCUITS_DIR, "build");
-const CONTRACTS_DIR = path.join(ROOT_DIR, "contracts");
+const FRONTEND_CIRCUITS_DIR = path.join(ROOT_DIR, "frontend", "public", "circuits");
 
 async function main() {
   console.log("==================================================");
-  console.log("ZK-SNARK Circuit Compilation and Setup Pipeline");
+  console.log("Circom Circuit Compilation");
   console.log("==================================================");
 
   if (!fs.existsSync(BUILD_DIR)) {
     fs.mkdirSync(BUILD_DIR, { recursive: true });
-    console.log(`Created build directory: ${BUILD_DIR}`);
   }
 
   const circuitPath = path.join(CIRCUITS_DIR, "voting.circom");
@@ -30,7 +27,7 @@ async function main() {
   }
 
   // 1. Detect Circom Compiler
-  console.log("\n[Step 1/5] Detecting Circom Compiler...");
+  console.log("\nDetecting Circom Compiler...");
   let circomCmd = "circom";
   try {
     const version = execSync("circom --version", { encoding: "utf8" });
@@ -45,57 +42,45 @@ async function main() {
     }
   }
 
+  // Remove existing wasm files and directory to prevent Windows file locking
+  const targetWasm = path.join(BUILD_DIR, "voting.wasm");
+  if (fs.existsSync(targetWasm)) {
+    try { fs.unlinkSync(targetWasm); } catch (e) {}
+  }
+
+  const votingJsDir = path.join(BUILD_DIR, "voting_js");
+  if (fs.existsSync(votingJsDir)) {
+    try {
+      fs.rmSync(votingJsDir, { recursive: true, force: true });
+    } catch (e) {}
+  }
+
   // 2. Compile voting.circom
-  console.log("\n[Step 2/5] Compiling voting.circom...");
+  console.log("\nCompiling voting.circom...");
   const compileCmd = `${circomCmd} "${circuitPath}" --r1cs --wasm --sym -o "${BUILD_DIR}" --prime bn128`;
   console.log(`Running: ${compileCmd}`);
   execSync(compileCmd, { stdio: "inherit" });
   console.log("Circuit compiled to R1CS, WASM, and SYM successfully.");
 
-  // Copy WASM to circuits/build/voting.wasm
+  // Copy WASM to build root and frontend
   const nestedWasm = path.join(BUILD_DIR, "voting_js", "voting.wasm");
-  const targetWasm = path.join(BUILD_DIR, "voting.wasm");
   if (fs.existsSync(nestedWasm)) {
     fs.copyFileSync(nestedWasm, targetWasm);
   }
 
-  // 3. Powers of Tau
-  console.log("\n[Step 3/5] Setting up Powers of Tau...");
-  const ptauPath = path.join(BUILD_DIR, "pot10_final.ptau");
-  if (!fs.existsSync(ptauPath)) {
-    console.log("Generating universal Powers of Tau (BN128, 2^10)...");
-    const ptau0 = path.join(BUILD_DIR, "pot10_0000.ptau");
-    const ptau1 = path.join(BUILD_DIR, "pot10_0001.ptau");
-    execSync(`npx snarkjs powersoftau new bn128 10 "${ptau0}"`, { stdio: "inherit" });
-    execSync(`npx snarkjs powersoftau contribute "${ptau0}" "${ptau1}" --name="Contributor" -v -e="entropy"`, { stdio: "inherit" });
-    execSync(`npx snarkjs powersoftau prepare phase2 "${ptau1}" "${ptauPath}" -v`, { stdio: "inherit" });
+  if (fs.existsSync(FRONTEND_CIRCUITS_DIR) && fs.existsSync(targetWasm)) {
+    fs.copyFileSync(targetWasm, path.join(FRONTEND_CIRCUITS_DIR, "voting.wasm"));
+    console.log("Synchronized voting.wasm to frontend/public/circuits/");
   }
-  console.log("Powers of Tau ready.");
 
-  // 4. Groth16 Setup
-  console.log("\n[Step 4/5] Running Groth16 trusted setup ceremony...");
-  const r1csPath = path.join(BUILD_DIR, "voting.r1cs");
-  const zkey0 = path.join(BUILD_DIR, "voting_0000.zkey");
-  const finalZkey = path.join(BUILD_DIR, "voting_final.zkey");
-
-  execSync(`npx snarkjs groth16 setup "${r1csPath}" "${ptauPath}" "${zkey0}"`, { stdio: "inherit" });
-  execSync(`npx snarkjs zkey contribute "${zkey0}" "${finalZkey}" --name="PragmaContributor" -v -e="entropy"`, { stdio: "inherit" });
-  console.log(`Final zkey generated: ${finalZkey}`);
-
-  // 5. Export Verification Key and Solidity Verifier
-  console.log("\n[Step 5/5] Exporting Verification Key and Solidity Verifier...");
-  const vkeyPath = path.join(BUILD_DIR, "verification_key.json");
-  execSync(`npx snarkjs zkey export verificationkey "${finalZkey}" "${vkeyPath}"`, { stdio: "inherit" });
-
-  const verifierSol = path.join(CONTRACTS_DIR, "Verifier.sol");
-  execSync(`npx snarkjs zkey export solidityverifier "${finalZkey}" "${verifierSol}"`, { stdio: "inherit" });
-  fs.appendFileSync(verifierSol, "\nimport \"./IVerifier.sol\";\ncontract Verifier is Groth16Verifier {}\n");
-  console.log("Verifier.sol exported successfully.");
-
-  console.log("\nCompilation and setup pipeline completed successfully.");
+  console.log("\nCircuit compilation completed successfully.");
 }
 
-main().catch((err) => {
-  console.error("Pipeline error:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Compilation error:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

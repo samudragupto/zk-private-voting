@@ -1,44 +1,31 @@
 {
-  "testTimestamp": "2026-10-24T11:54:56.878Z",
-  "circuitConstraints": 434,
+  "benchmarkTimestamp": "2026-10-24T12:45:09.494Z",
+  "circuitConstraints": 3530,
   "iterations": 10,
-  "measuredHost": {
-    "cpu": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     ",
-    "totalRamGB": "15.2",
-    "proverEngine": "SnarkJS (Node.js/WASM CPU)",
-    "averageProofTimeMs": 84.09,
-    "averageVerifyTimeMs": 8.93,
-    "heapUsedMB": 9.58,
-    "rssMB": 393.34
+  "environment": {
+    "hostname": "LAPTOP-KR7AT2H4",
+    "platform": "Windows_NT 10.0.26200 (x64)",
+    "nodeVersion": "v22.20.0",
+    "cpuModel": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics     ",
+    "cpuCores": 16,
+    "totalRamGB": 15.19,
+    "gpuStatus": "GPU proving: not configured; SnarkJS WASM benchmark executed on CPU."
   },
-  "hardwareComparison": [
-    {
-      "platform": "Local Machine (Node.js/WASM)",
-      "proofTime": "84.1 ms",
-      "memoryUsage": "9.58 MB Heap / 393.34 MB RSS",
-      "verificationTime": "8.9 ms",
-      "prover": "SnarkJS (CPU single-core)"
-    },
-    {
-      "platform": "Local Machine (C++ Rapidsnark)",
-      "proofTime": "23.5 ms",
-      "memoryUsage": "< 50 MB",
-      "verificationTime": "3.6 ms",
-      "prover": "Rapidsnark (x86_64 AVX2)"
-    },
-    {
-      "platform": "NVIDIA RTX 4060 (CUDA / ICICLE)",
-      "proofTime": "< 15 ms",
-      "memoryUsage": "250 MB VRAM",
-      "verificationTime": "< 1 ms",
-      "prover": "ICICLE / GPU MSM"
-    },
-    {
-      "platform": "Google Colab T4 (CUDA / ICICLE)",
-      "proofTime": "< 30 ms",
-      "memoryUsage": "350 MB VRAM",
-      "verificationTime": "< 2 ms",
-      "prover": "ICICLE / GPU MSM"
-    }
-  ]
+  "provingMetrics": {
+    "proverEngine": "SnarkJS (Node.js/WASM single-process)",
+    "averageProofTimeMs": 144.32,
+    "minProofTimeMs": 128.12,
+    "maxProofTimeMs": 169.24,
+    "iterations": 10
+  },
+  "verificationMetrics": {
+    "verifierEngine": "SnarkJS JavaScript Verifier",
+    "averageVerifyTimeMs": 8.75,
+    "minVerifyTimeMs": 7.17,
+    "maxVerifyTimeMs": 14.77
+  },
+  "memoryUsageMB": {
+    "heapUsedMB": 9.65,
+    "rssMB": 540.33
+  }
 }

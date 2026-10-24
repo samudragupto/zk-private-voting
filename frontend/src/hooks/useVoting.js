@@ -1,4 +1,4 @@
-// Purpose: React hook for smart contract interactions with Voting.sol using Wagmi v2 and Viem.
+// Purpose: Smart contract interactions with Voting.sol using Wagmi v2 and Viem.
 import { useState, useCallback } from "react";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { VOTING_CONTRACT_ADDRESS, VOTING_ABI } from "../config/contracts";
@@ -22,7 +22,7 @@ export function useVoting() {
     abi: VOTING_ABI,
     functionName: "getResults",
     query: {
-      refetchInterval: 4000, // Poll every 4 seconds
+      refetchInterval: 4000,
     },
   });
 
@@ -37,10 +37,12 @@ export function useVoting() {
   });
 
   /**
-   * Cast a private vote ballot on Polygon Mumbai.
+   * Cast a private vote ballot on Polygon Amoy.
+   * @param {string} proofBytes - ABI-encoded proof bytes.
+   * @param {Array<string>} publicSignals - [merkleRoot, proposalId, nullifierHash, voteCommitment].
    */
   const castVote = useCallback(
-    async (proofBytes, nullifierHash, voteCommitment) => {
+    async (proofBytes, publicSignals) => {
       setIsSubmitting(true);
       setTxError(null);
       setTxHash(null);
@@ -50,15 +52,19 @@ export function useVoting() {
           throw new Error("Please connect your wallet to submit a vote.");
         }
 
+        const formattedSignals = publicSignals.map((s) => BigInt(s));
+
         const hash = await writeContractAsync({
           address: VOTING_CONTRACT_ADDRESS,
           abi: VOTING_ABI,
           functionName: "vote",
-          args: [proofBytes, BigInt(nullifierHash), BigInt(voteCommitment)],
+          args: [proofBytes, formattedSignals],
         });
 
         setTxHash(hash);
-        await publicClient.waitForTransactionReceipt({ hash });
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash });
+        }
         await refetchResults();
         await refetchTotal();
         setIsSubmitting(false);
@@ -67,9 +73,13 @@ export function useVoting() {
         console.error("Contract vote execution error:", err);
         let friendlyMessage = err.message || "Failed to submit vote.";
         if (friendlyMessage.includes("AlreadyVoted")) {
-          friendlyMessage = "Double-voting detected: This wallet has already cast a vote!";
+          friendlyMessage = "Double-voting rejected: This nullifier has already been consumed.";
         } else if (friendlyMessage.includes("InvalidProof")) {
-          friendlyMessage = "Verification failed: The submitted zk-SNARK proof was rejected by the verifier.";
+          friendlyMessage = "Verification failed: Groth16 verifier rejected the proof.";
+        } else if (friendlyMessage.includes("InvalidMerkleRoot")) {
+          friendlyMessage = "Merkle verification failed: Proof root does not match approved governance root.";
+        } else if (friendlyMessage.includes("InvalidProposalId")) {
+          friendlyMessage = "Proposal mismatch: Ballot is for a different proposal ID.";
         }
         setTxError(friendlyMessage);
         setIsSubmitting(false);
@@ -80,44 +90,45 @@ export function useVoting() {
   );
 
   /**
-   * Cast ballot and immediately tally it in one atomic transaction.
+   * Reveal a previously submitted vote commitment on Polygon Amoy.
+   * @param {number} voteOption - 0 (Against / Nay) or 1 (For / Yea).
+   * @param {string|bigint} salt - The blinding salt used in the ballot.
    */
-  const castAndReveal = useCallback(
-    async (proofBytes, nullifierHash, voteCommitment, voteOption) => {
+  const revealVote = useCallback(
+    async (voteOption, salt) => {
       setIsSubmitting(true);
       setTxError(null);
       setTxHash(null);
 
       try {
         if (!isConnected) {
-          throw new Error("Please connect your wallet to submit a vote.");
+          throw new Error("Please connect your wallet to reveal your ballot.");
         }
 
         const hash = await writeContractAsync({
           address: VOTING_CONTRACT_ADDRESS,
           abi: VOTING_ABI,
-          functionName: "castAndRevealVote",
-          args: [
-            proofBytes,
-            BigInt(nullifierHash),
-            BigInt(voteCommitment),
-            BigInt(voteOption),
-          ],
+          functionName: "revealVote",
+          args: [BigInt(voteOption), BigInt(salt)],
         });
 
         setTxHash(hash);
-        await publicClient.waitForTransactionReceipt({ hash });
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash });
+        }
         await refetchResults();
         await refetchTotal();
         setIsSubmitting(false);
         return hash;
       } catch (err) {
-        console.error("Contract castAndReveal error:", err);
-        let friendlyMessage = err.message || "Failed to cast and reveal vote.";
-        if (friendlyMessage.includes("AlreadyVoted")) {
-          friendlyMessage = "Double-voting detected: This wallet has already cast a vote!";
-        } else if (friendlyMessage.includes("InvalidProof")) {
-          friendlyMessage = "Verification failed: The zk-SNARK proof is invalid.";
+        console.error("Contract revealVote error:", err);
+        let friendlyMessage = err.message || "Failed to reveal ballot.";
+        if (friendlyMessage.includes("CommitmentNotFound")) {
+          friendlyMessage = "Commitment not found: Computed Poseidon(vote, salt) was never submitted.";
+        } else if (friendlyMessage.includes("AlreadyRevealed")) {
+          friendlyMessage = "Double-counting prevented: This vote commitment has already been revealed.";
+        } else if (friendlyMessage.includes("InvalidVoteOption")) {
+          friendlyMessage = "Invalid vote option: Must be 0 or 1.";
         }
         setTxError(friendlyMessage);
         setIsSubmitting(false);
@@ -149,24 +160,14 @@ export function useVoting() {
     [publicClient]
   );
 
-  /**
-   * Mock eligibility verification (in a production DAO, this queries token balance).
-   */
-  const checkEligibility = useCallback(async (userAddress) => {
-    if (!userAddress) return { isEligible: false, balance: 0 };
-    // In our system, all connected addresses in the demo hold 1 voting credit
-    return { isEligible: true, balance: 1 };
-  }, []);
-
   const votesForOption0 = resultsData ? Number(resultsData[0]) : 0;
   const votesForOption1 = resultsData ? Number(resultsData[1]) : 0;
   const totalVotes = totalVotesData ? Number(totalVotesData) : votesForOption0 + votesForOption1;
 
   return {
     castVote,
-    castAndReveal,
+    revealVote,
     checkIfVoted,
-    checkEligibility,
     refetchResults,
     votesForOption0,
     votesForOption1,

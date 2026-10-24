@@ -29,7 +29,7 @@ export function ProofGenerator({ isProving, progress, proofData, error }) {
               : "Zero-Knowledge Proof Ready"}
           </h4>
         </div>
-        <span className="text-xs font-mono text-slate-400">BN128 Alt-Curve</span>
+        <span className="text-xs font-mono text-slate-400">BN128 / Alt-BN128</span>
       </div>
 
       {progress && (
@@ -48,29 +48,49 @@ export function ProofGenerator({ isProving, progress, proofData, error }) {
         <div className="space-y-3 pt-2 text-xs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div className="p-3 rounded-xl bg-darkCard/90 border border-darkBorder">
-              <span className="text-slate-400 block mb-1 font-medium">Public Nullifier Hash:</span>
-              <p className="font-mono text-emerald-400 break-all text-[11px]">
-                {proofData.nullifierHash}
+              <span className="text-slate-400 block mb-1 font-medium">[0] Merkle Root:</span>
+              <p className="font-mono text-brand-400 break-all text-[11px]">
+                {proofData.merkleRoot}
               </p>
               <span className="text-[10px] text-slate-500 mt-1 block">
-                Public signal 1: Recorded on-chain to prevent double-voting
+                Public Signal 1: Verified against approved governance tree
               </span>
             </div>
 
             <div className="p-3 rounded-xl bg-darkCard/90 border border-darkBorder">
-              <span className="text-slate-400 block mb-1 font-medium">Public Vote Commitment:</span>
+              <span className="text-slate-400 block mb-1 font-medium">[1] Proposal ID:</span>
+              <p className="font-mono text-cyan-400 break-all text-[11px]">
+                {proofData.proposalId}
+              </p>
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Public Signal 2: Binds ballot to target proposal
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-darkCard/90 border border-darkBorder">
+              <span className="text-slate-400 block mb-1 font-medium">[2] Nullifier Hash:</span>
+              <p className="font-mono text-emerald-400 break-all text-[11px]">
+                {proofData.nullifierHash}
+              </p>
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Public Signal 3: Recorded on-chain to prevent double-voting
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-darkCard/90 border border-darkBorder">
+              <span className="text-slate-400 block mb-1 font-medium">[3] Vote Commitment:</span>
               <p className="font-mono text-purple-400 break-all text-[11px]">
                 {proofData.voteCommitment}
               </p>
               <span className="text-[10px] text-slate-500 mt-1 block">
-                Public signal 2: Blinds ballot choice on-chain
+                Public Signal 4: Blinds ballot choice until reveal
               </span>
             </div>
           </div>
 
           <div className="p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 flex items-center justify-between text-[11px] text-emerald-300">
-            <span>Identity and choice concealed inside zk-SNARK witness</span>
-            <span className="font-mono font-semibold">100% Private</span>
+            <span>Identity secret & ballot choice concealed inside zk-SNARK witness</span>
+            <span className="font-mono font-semibold">Groth16 Verified</span>
           </div>
         </div>
       )}

@@ -1,91 +1,90 @@
-// Purpose: Handles client-side Groth16 ZK proof generation, nullifier derivation, and proof ABI encoding.
+// Purpose: Client-side Groth16 ZK proof generation using Merkle tree membership.
 import { useState, useCallback, useRef } from "react";
 import { ethers } from "ethers";
 import * as snarkjs from "snarkjs";
+import { getDemoMerkleTree } from "../config/merkle";
+import { APPROVED_MERKLE_ROOT, PROPOSAL_ID } from "../config/contracts";
 
-/**
- * Hook for generating Zero-Knowledge proofs directly in the voter's browser.
- */
 export function useProof() {
   const [isProving, setIsProving] = useState(false);
   const [progress, setProgress] = useState("");
   const [proofData, setProofData] = useState(null);
   const [error, setError] = useState(null);
 
-  // In-memory cache for WASM and zkey to prevent redundant HTTP downloads
+  // In-memory cache for WASM and zkey to avoid redundant network requests
   const cacheRef = useRef({ wasm: null, zkey: null });
 
   /**
    * Generates a Groth16 proof off-chain.
-   * @param {string} userAddress - Connected Ethereum wallet address.
-   * @param {number} voteChoice - 0 (Against) or 1 (For).
-   * @param {number|string} tokenBalance - Eligibility balance (must be >= 1).
+   * @param {number} voterIndex - Demo voter index (0 to 15).
+   * @param {number} voteChoice - 0 (Against / Nay) or 1 (For / Yea).
    */
   const generateZKProof = useCallback(
-    async (userAddress, voteChoice, tokenBalance = "1") => {
+    async (voterIndex, voteChoice) => {
       setIsProving(true);
       setError(null);
       setProgress("Initializing ZK proof generator...");
 
       try {
-        if (!userAddress) {
-          throw new Error("Wallet not connected. Please connect your wallet first.");
-        }
-        if (BigInt(tokenBalance) < 1n) {
-          throw new Error("Insufficient tokens: Voter must hold at least 1 DAO token.");
-        }
         if (voteChoice !== 0 && voteChoice !== 1) {
-          throw new Error("Invalid vote choice: Must be binary 0 or 1.");
+          throw new Error("Invalid vote choice: Must be binary 0 (Nay) or 1 (Yea).");
         }
 
-        // 1. Deterministic Nullifier Derivation: SHA256(address + proposalSalt)
-        // Decouples voter identity while strictly binding one ballot per wallet
-        setProgress("Deriving cryptographic nullifier...");
-        const proposalNonce = "PRAGMA_MUMBAI_DAO_PROPOSAL_1";
-        const nullifierHex = ethers.keccak256(
-          ethers.toUtf8Bytes(userAddress.toLowerCase() + proposalNonce)
-        );
-        // Convert to BigInt within BN128 scalar field
-        const bn128Modulus = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-        const nullifier = (BigInt(nullifierHex) % bn128Modulus).toString();
+        // 1. Fetch Merkle tree and proof for the selected voter
+        setProgress("Calculating Merkle tree path for voter identity...");
+        const { tree, secrets, root } = await getDemoMerkleTree();
+        const voterSecret = secrets[voterIndex];
+        if (!voterSecret) {
+          throw new Error(`Voter index ${voterIndex} not found in approved registry.`);
+        }
 
-        // 2. Generate random 256-bit blinding salt to conceal the vote choice
-        setProgress("Blinding ballot with random entropy...");
+        const { merkleProof, merklePathIndices } = tree.getProof(voterIndex);
+
+        // 2. Generate random 256-bit blinding salt for ballot commitment
+        setProgress("Generating random ballot blinding salt...");
+        const bn128Modulus =
+          21888242871839275222246405745257275088548364400416034343698204186575808495617n;
         const randomSaltBytes = ethers.randomBytes(31);
         const salt = (BigInt(ethers.hexlify(randomSaltBytes)) % bn128Modulus).toString();
 
         const circuitInput = {
-          nullifier: nullifier,
+          root: root,
+          proposal: PROPOSAL_ID.toString(),
+          identitySecret: voterSecret,
+          merkleProof: merkleProof,
+          merklePathIndices: merklePathIndices,
           vote: voteChoice.toString(),
-          tokenBalance: tokenBalance.toString(),
           salt: salt,
         };
 
-        setProgress("Generating Groth16 witness and proof via WASM...");
-
-        // Fetch or read from cache
+        // 3. Load WASM and zkey
         if (!cacheRef.current.wasm || !cacheRef.current.zkey) {
-          setProgress("Loading circuit WASM and proving key into memory...");
-          const resWasm = await fetch("/circuits/voting.wasm");
-          const resZkey = await fetch("/circuits/voting_final.zkey");
+          setProgress("Fetching circuit WASM and proving key...");
+          const [resWasm, resZkey] = await Promise.all([
+            fetch("/circuits/voting.wasm"),
+            fetch("/circuits/voting_final.zkey"),
+          ]);
 
           if (!resWasm.ok || !resZkey.ok) {
-            throw new Error("Could not load /circuits/voting.wasm or /circuits/voting_final.zkey from server.");
+            throw new Error(
+              "Could not load circuit artifacts from /circuits/voting.wasm or /circuits/voting_final.zkey."
+            );
           }
 
           cacheRef.current.wasm = new Uint8Array(await resWasm.arrayBuffer());
           cacheRef.current.zkey = new Uint8Array(await resZkey.arrayBuffer());
         }
 
-        setProgress("Executing cryptographic proof generation in browser WASM...");
+        // 4. Compute Groth16 witness and proof in WASM
+        setProgress("Computing Groth16 witness and proof in browser WASM...");
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
           circuitInput,
           cacheRef.current.wasm,
           cacheRef.current.zkey
         );
 
-        // 3. Format into ABI-encoded bytes payload for Voting.sol
-        setProgress("Encoding Solidity calldata...");
+        // 5. Format proof coordinates into Solidity arrays
+        setProgress("Formatting Solidity calldata...");
         const a = [proof.pi_a[0], proof.pi_a[1]];
         const b = [
           [proof.pi_b[0][1], proof.pi_b[0][0]],
@@ -100,11 +99,18 @@ export function useProof() {
         );
 
         const resultData = {
+          a,
+          b,
+          c,
           proofBytes: encodedProofBytes,
-          nullifierHash: publicSignals[0],
-          voteCommitment: publicSignals[1],
+          publicSignals: publicSignals, // [merkleRoot, proposalId, nullifierHash, voteCommitment]
+          merkleRoot: publicSignals[0],
+          proposalId: publicSignals[1],
+          nullifierHash: publicSignals[2],
+          voteCommitment: publicSignals[3],
           voteChoice,
           salt,
+          voterIndex,
           rawProof: proof,
         };
 
@@ -113,7 +119,7 @@ export function useProof() {
         setIsProving(false);
         return resultData;
       } catch (err) {
-        console.error("Proof generation failed:", err);
+        console.error("Proof generation error:", err);
         setError(err.message || "Failed to generate Zero-Knowledge proof.");
         setIsProving(false);
         throw err;

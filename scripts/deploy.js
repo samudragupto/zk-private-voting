@@ -1,17 +1,19 @@
 /**
  * @file deploy.js
- * @notice Automated deployment script for Polygon Mumbai / Amoy Testnet & Local Hardhat.
- *         Deploys Verifier.sol and Voting.sol, validates deployment state, and optionally
- *         submits source code for verification on Polygonscan.
+ * @notice Automated deployment script for Polygon Amoy Testnet & Local Hardhat.
+ *         Deploys Verifier.sol, Poseidon(2) hasher, and Voting.sol.
  */
 
 const hre = require("hardhat");
 const fs = require("fs");
 const path = require("path");
+const { poseidonContract } = require("circomlibjs");
+const { createDemoMerkleTree } = require("./merkleTree");
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const network = hre.network.name;
+
   console.log("==================================================");
   console.log("Deploying ZK Private Voting System");
   console.log("==================================================");
@@ -19,31 +21,57 @@ async function main() {
   console.log(`Deployer Account: ${deployer.address}`);
 
   const balance = await hre.ethers.provider.getBalance(deployer.address);
-  console.log(`Deployer Balance: ${hre.ethers.formatEther(balance)} MATIC/ETH\n`);
+  console.log(`Deployer Balance: ${hre.ethers.formatEther(balance)} POL/ETH\n`);
 
   // 1. Deploy Verifier Contract
-  console.log("[1/2] Deploying Groth16 Verifier...");
+  console.log("[1/3] Deploying Groth16 Verifier...");
   const Verifier = await hre.ethers.getContractFactory("Groth16Verifier");
   const verifier = await Verifier.deploy();
   await verifier.waitForDeployment();
   const verifierAddress = await verifier.getAddress();
   console.log(`Verifier deployed at: ${verifierAddress}`);
 
-  // 2. Deploy Voting Contract
-  console.log("\n[2/2] Deploying Voting Contract with Verifier link...");
+  // 2. Deploy Poseidon(2) Hasher Contract
+  console.log("\n[2/3] Deploying Poseidon(2) Hasher...");
+  const poseidonFactory = new hre.ethers.ContractFactory(
+    poseidonContract.generateABI(2),
+    poseidonContract.createCode(2),
+    deployer
+  );
+  const poseidon = await poseidonFactory.deploy();
+  await poseidon.waitForDeployment();
+  const poseidonAddress = await poseidon.getAddress();
+  console.log(`Poseidon(2) deployed at: ${poseidonAddress}`);
+
+  // 3. Compute Demo Merkle Root (Depth 4, 16 demo voters)
+  const { root: approvedMerkleRoot } = await createDemoMerkleTree();
+  const proposalId = 1n;
+  console.log(`Demo Approved Root:    ${approvedMerkleRoot}`);
+  console.log(`Demo Proposal ID:      ${proposalId}`);
+
+  // 4. Deploy Voting Contract
+  console.log("\n[3/3] Deploying Voting Contract...");
   const Voting = await hre.ethers.getContractFactory("Voting");
-  const voting = await Voting.deploy(verifierAddress);
+  const voting = await Voting.deploy(
+    verifierAddress,
+    poseidonAddress,
+    BigInt(approvedMerkleRoot),
+    proposalId
+  );
   await voting.waitForDeployment();
   const votingAddress = await voting.getAddress();
   console.log(`Voting deployed at:   ${votingAddress}`);
 
-  // 3. Export deployed contract addresses for Frontend & Scripts
+  // 5. Export deployed contract addresses
   const deploymentInfo = {
     network,
-    chainId: hre.network.config.chainId,
+    chainId: hre.network.config.chainId || 31337,
     deployer: deployer.address,
     verifierAddress,
+    poseidonAddress,
     votingAddress,
+    approvedMerkleRoot,
+    proposalId: proposalId.toString(),
     timestamp: new Date().toISOString(),
   };
 
@@ -51,7 +79,7 @@ async function main() {
   fs.writeFileSync(deploymentPath, JSON.stringify(deploymentInfo, null, 2));
   console.log(`\nDeployment info saved to: ${deploymentPath}`);
 
-  // Also write to frontend config if frontend/src exists
+  // Synchronize to frontend config
   const frontendConfigDir = path.join(__dirname, "..", "frontend", "src", "config");
   if (!fs.existsSync(frontendConfigDir)) {
     fs.mkdirSync(frontendConfigDir, { recursive: true });
@@ -61,13 +89,13 @@ async function main() {
     JSON.stringify(deploymentInfo, null, 2)
   );
 
-  // 4. Verify on Polygonscan (only on live networks like mumbai/amoy)
-  if (network === "mumbai" || network === "amoy") {
+  // 6. Verify on Polygonscan if deploying to Amoy
+  if (network === "amoy") {
     console.log("\nWaiting 5 block confirmations before Polygonscan verification...");
     await voting.deploymentTransaction().wait(5);
 
     try {
-      console.log("Verifying Verifier on Polygonscan...");
+      console.log("Verifying Verifier on Polygonscan Amoy...");
       await hre.run("verify:verify", {
         address: verifierAddress,
         constructorArguments: [],
@@ -78,10 +106,15 @@ async function main() {
     }
 
     try {
-      console.log("Verifying Voting on Polygonscan...");
+      console.log("Verifying Voting on Polygonscan Amoy...");
       await hre.run("verify:verify", {
         address: votingAddress,
-        constructorArguments: [verifierAddress],
+        constructorArguments: [
+          verifierAddress,
+          poseidonAddress,
+          BigInt(approvedMerkleRoot),
+          proposalId
+        ],
       });
       console.log("Voting verified.");
     } catch (err) {
@@ -89,10 +122,14 @@ async function main() {
     }
   }
 
-  console.log("\nDeployment completed successfully.");
+  console.log("\nDeployment pipeline finished successfully.");
 }
 
-main().catch((error) => {
-  console.error("Deployment failed:", error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Deployment failed:", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main };

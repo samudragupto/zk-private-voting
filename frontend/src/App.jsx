@@ -22,8 +22,8 @@ export default function App() {
       {/* Footer */}
       <footer className="glass-panel border-t border-darkBorder/60 py-6 px-4 mt-12 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>ZK Private Voting System - Built for Pragma Mumbai</span>
-          <span className="font-mono">Circom 2.2 - SnarkJS Groth16 - Solidity 0.8.20 - Polygon Mumbai</span>
+          <span>ZK Private Voting Prototype - Pragma Mumbai Technical Demo</span>
+          <span className="font-mono">Circom 2.2 - SnarkJS Groth16 - Solidity 0.8.20 - Polygon Amoy</span>
         </div>
       </footer>
     </div>
@@ -31,38 +31,31 @@ export default function App() {
 }
 
 function BenchmarkView() {
-  const realMeasuredBenchmarks = [
+  const empiricalBenchmarks = [
     {
-      platform: "Local Machine (Node.js/WASM)",
-      proofTime: "84.1 ms",
-      memoryUsage: "9.58 MB Heap / 393 MB RSS",
-      verificationTime: "8.9 ms",
-      prover: "SnarkJS (CPU single-core)",
-      status: "Measured Live",
+      metric: "Circuit Constraints",
+      value: "3530",
+      notes: "Measured via snarkjs r1cs info circuits/build/voting.r1cs",
     },
     {
-      platform: "Local Machine (C++ Rapidsnark)",
-      proofTime: "23.5 ms",
-      memoryUsage: "< 50 MB RAM",
-      verificationTime: "3.5 ms",
-      prover: "Rapidsnark (x86_64 AVX2)",
-      status: "Calculated C++ Prover",
+      metric: "Average Proof Time",
+      value: "152.44 ms",
+      notes: "10 iterations measured with SnarkJS Groth16 WASM",
     },
     {
-      platform: "NVIDIA RTX 4060 (CUDA / ICICLE)",
-      proofTime: "< 15 ms",
-      memoryUsage: "250 MB VRAM",
-      verificationTime: "< 1 ms",
-      prover: "ICICLE / GPU MSM",
-      status: "GPU Prover",
+      metric: "Average Verification Time",
+      value: "8.73 ms",
+      notes: "JavaScript/WASM verification across 10 iterations",
     },
     {
-      platform: "Google Colab T4 (CUDA / ICICLE)",
-      proofTime: "< 30 ms",
-      memoryUsage: "350 MB VRAM",
-      verificationTime: "< 2 ms",
-      prover: "ICICLE / GPU MSM",
-      status: "Cloud GPU Prover",
+      metric: "Heap Memory Allocation",
+      value: "8.88 MB",
+      notes: "Node.js process heap memory",
+    },
+    {
+      metric: "Resident Set Size (RSS)",
+      value: "544.59 MB",
+      notes: "Total process RAM footprint during proof execution",
     },
   ];
 
@@ -76,7 +69,16 @@ function BenchmarkView() {
           Empirical ZK Performance Benchmarks
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Measured across 10 iterations of Groth16 witness generation, proof generation, and verification on the 434-constraint BN128 circuit.
+          Measured live across 10 iterations of Groth16 witness generation, proof generation, and verification on the 3530-constraint Merkle tree circuit.
+        </p>
+      </div>
+
+      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+        <span className="font-mono text-brand-300 font-semibold block mb-1">
+          Prover Status & Hardware Metadata:
+        </span>
+        <p className="font-mono text-slate-400">
+          GPU proving: not configured; SnarkJS WASM benchmark executed on CPU.
         </p>
       </div>
 
@@ -85,29 +87,19 @@ function BenchmarkView() {
           <table className="w-full text-left text-xs">
             <thead className="bg-darkCard/90 text-slate-300 font-mono border-b border-darkBorder">
               <tr>
-                <th className="p-4">Platform</th>
-                <th className="p-4">Proof Time</th>
-                <th className="p-4">Memory Usage</th>
-                <th className="p-4">Verification</th>
-                <th className="p-4">Prover Engine</th>
-                <th className="p-4">Status</th>
+                <th className="p-4">Benchmark Metric</th>
+                <th className="p-4">Measured Value</th>
+                <th className="p-4">Empirical Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-darkBorder text-slate-300 font-mono">
-              {realMeasuredBenchmarks.map((item, idx) => (
+              {empiricalBenchmarks.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-800/20 transition-colors">
                   <td className="p-4 font-sans font-semibold text-white">
-                    {item.platform}
+                    {item.metric}
                   </td>
-                  <td className="p-4 text-emerald-400 font-bold">{item.proofTime}</td>
-                  <td className="p-4">{item.memoryUsage}</td>
-                  <td className="p-4 text-purple-400">{item.verificationTime}</td>
-                  <td className="p-4 font-sans text-slate-300">{item.prover}</td>
-                  <td className="p-4 font-sans">
-                    <span className="px-2 py-1 rounded-md bg-slate-800 text-slate-300 text-[11px] border border-slate-700">
-                      {item.status}
-                    </span>
-                  </td>
+                  <td className="p-4 text-emerald-400 font-bold">{item.value}</td>
+                  <td className="p-4 text-slate-400 font-sans">{item.notes}</td>
                 </tr>
               ))}
             </tbody>
@@ -119,18 +111,18 @@ function BenchmarkView() {
         <div className="glass-panel p-5 rounded-2xl border border-darkBorder space-y-2 text-xs">
           <h4 className="font-bold text-white text-sm">8GB RAM Feasibility</h4>
           <p className="text-slate-400 leading-relaxed">
-            Because this circuit requires only 434 constraints (using Poseidon hash over the BN128 scalar field Fr),
-            heap memory consumption during proof generation remains below 10 MB. This runs comfortably on 8GB RAM laptops
-            and in browser WebAssembly without thread stalls.
+            With 3530 constraints for depth-4 Merkle membership and Poseidon hashing,
+            heap memory usage during client-side WASM proof calculation remains under 10 MB.
+            This runs comfortably in browser WebAssembly on laptops with 8GB RAM without memory pressure.
           </p>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-darkBorder space-y-2 text-xs">
-          <h4 className="font-bold text-white text-sm">GPU vs CPU Architectural Reality</h4>
+          <h4 className="font-bold text-white text-sm">Prover Architecture & Honesty</h4>
           <p className="text-slate-400 leading-relaxed">
-            SnarkJS operates in Node.js/WASM on the CPU. For small circuits (under 500 constraints), CPU proof generation
-            takes only 84 ms. GPU acceleration (via CUDA provers like Rapidsnark or ICICLE) becomes critical on large circuits
-            exceeding 20,000 constraints.
+            SnarkJS executes in WebAssembly on CPU threads. No proprietary GPU provers or synthetic
+            CUDA acceleration are bundled. Proof generation completes in ~152 ms on modern consumer CPUs,
+            making CPU proving fully viable for this voting workflow.
           </p>
         </div>
       </div>

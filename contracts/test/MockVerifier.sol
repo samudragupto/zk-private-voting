@@ -18,7 +18,7 @@ contract MockVerifier is IVerifier {
         uint256[2] calldata,
         uint256[2][2] calldata,
         uint256[2] calldata,
-        uint256[2] calldata
+        uint256[4] calldata
     ) external view override returns (bool r) {
         return shouldPass;
     }

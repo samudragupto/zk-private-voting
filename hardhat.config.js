@@ -7,11 +7,8 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length ==
   ? process.env.PRIVATE_KEY
   : "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
-const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "YOUR_POLYGONSCAN_API_KEY";
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "";
-const MUMBAI_RPC = ALCHEMY_API_KEY
-  ? `https://polygon-mumbai.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
-  : process.env.POLYGON_MUMBAI_RPC_URL || "https://rpc-mumbai.maticvigil.com";
+const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
+const AMOY_RPC_URL = process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology";
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -34,16 +31,9 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
     },
-    // Polygon Mumbai Testnet
-    mumbai: {
-      url: MUMBAI_RPC,
-      accounts: [PRIVATE_KEY],
-      chainId: 80001,
-      gasPrice: 20000000000, // 20 Gwei
-    },
-    // Polygon Amoy (Mumbai's successor on Sepolia)
+    // Polygon Amoy Testnet (Chain ID 80002)
     amoy: {
-      url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
+      url: AMOY_RPC_URL,
       accounts: [PRIVATE_KEY],
       chainId: 80002,
     },
@@ -55,9 +45,18 @@ module.exports = {
   },
   etherscan: {
     apiKey: {
-      polygonMumbai: POLYGONSCAN_API_KEY,
       polygonAmoy: POLYGONSCAN_API_KEY,
     },
+    customChains: [
+      {
+        network: "polygonAmoy",
+        chainId: 80002,
+        urls: {
+          apiURL: "https://api-amoy.polygonscan.com/api",
+          browserURL: "https://amoy.polygonscan.com",
+        },
+      },
+    ],
   },
   paths: {
     sources: "./contracts",

@@ -1,198 +1,305 @@
-# ZK-SNARK Private DAO Voting System
+# ZK-SNARK Private DAO Voting Prototype
 
-A production-ready Zero-Knowledge Private DAO Voting System built for developers at Pragma Mumbai. Voters can prove eligibility and cast binary ballots (Yea/Nay) with complete cryptographic anonymity while strictly preventing double-voting through unique deterministic nullifier hashes.
+An educational prototype and technical demonstration of a Zero-Knowledge Private DAO Voting System designed for developers at **Pragma Mumbai**.
+
+**Pragma Talk Positioning Statement:**
+> *"Building a Private DAO Voting Prototype with Circom and Groth16: Merkle Membership, Nullifiers, and Honest Trade-offs"*
 
 ---
 
-## Architecture Overview
+## 1. System Architecture
 
 ```mermaid
 flowchart TD
     subgraph ClientBrowser ["Voter Client (Browser / WASM)"]
-        A[Voter Wallet Address] --> B[Generate Deterministic Nullifier]
-        C[Token Balance >= 1] --> D[Circom 2.2 Circuit]
-        E[Vote Choice: 0 or 1] --> D
-        F[Random Blinding Salt] --> D
-        B --> D
-        D -->|SnarkJS Groth16| G[Proof: a, b, c]
-        D -->|Public Signal 0| H[nullifierHash]
-        D -->|Public Signal 1| I[voteCommitment]
+        A["Private Identity Secret"] --> B["identityCommitment = Poseidon(secret)"]
+        B --> C["Merkle Membership Proof (Depth 4)"]
+        A --> D["nullifierHash = Poseidon(secret, proposalId)"]
+        E["Vote (0 or 1)"] --> F["voteCommitment = Poseidon(vote, salt)"]
+        G["Random Salt"] --> F
+        C --> H["Circom 2.2 Circuit (3530 Constraints)"]
+        D --> H
+        F --> H
+        H -->|SnarkJS Groth16| I["Groth16 Proof (a, b, c)"]
+        H -->|Public Signals| J["[merkleRoot, proposalId, nullifierHash, voteCommitment]"]
     end
 
-    subgraph PolygonBlockchain ["Polygon Network (Mumbai / Amoy)"]
-        G --> J["Voting.sol"]
-        H --> J
-        I --> J
-        J -->|Calls| K["Verifier.sol (BN128 Pairing)"]
-        K -->|True/False| J
-        J -->|Record| L["usedNullifiers[nullifierHash] = true"]
-        J -->|Record| M["validCommitments[voteCommitment] = true"]
-        J -->|Update Tally| N["votesForOption0 / votesForOption1"]
+    subgraph PolygonBlockchain ["Polygon Amoy Testnet (Chain ID 80002)"]
+        I --> K["Voting.sol"]
+        J --> K
+        K -->|Step 1: Verify Proof| L["Groth16Verifier.sol (BN128 Pairing)"]
+        L -->|Returns true| K
+        K -->|Enforce Root & Proposal| M["approvedMerkleRoot & proposalId"]
+        K -->|Check & Store| N["usedNullifiers[nullifierHash] = true"]
+        K -->|Record Ballot| O["validCommitments[voteCommitment] = true"]
+        
+        P["Reveal Phase: (vote, salt)"] --> K
+        K -->|Step 2: Poseidon(vote, salt)| Q["Poseidon(2) Hasher Contract"]
+        Q -->|Matches stored commitment| R["Increment votesForOption0 / votesForOption1"]
     end
 ```
 
 ---
 
-## File Structure
+## 2. Cryptographic and Security Model
 
-```bash
+### A. Eligibility Model (Merkle Membership)
+- Rather than accepting an unverified user-declared balance, voter eligibility is established via cryptographic inclusion in an approved **Merkle Tree**.
+- Each eligible voter possesses a private scalar `identitySecret`.
+- The corresponding leaf commitment is `identityCommitment = Poseidon(identitySecret)`.
+- The circuit verifies that `identityCommitment` is an authorized leaf of the approved `merkleRoot`.
+- **Demo Parameter**: The demo configuration uses a fixed depth of **4** ($2^4 = 16$ demo voter commitments). This parameter is intentionally sized for fast, non-blocking execution in browser WASM and Google Colab.
+
+### B. Double-Voting Prevention (Nullifiers)
+- To prevent duplicate ballots without disclosing the voter's identity leaf or wallet address, a unique nullifier is computed inside the circuit:
+  $$\text{nullifierHash} = \text{Poseidon}(\text{identitySecret}, \text{proposalId})$$
+- Because `proposalId` is bound to the hash, a voter can cast exactly one ballot per proposal.
+- The smart contract checks `usedNullifiers[nullifierHash]`. If already recorded, the transaction reverts with `AlreadyVoted()`.
+- The nullifier is **not** derived from the Ethereum wallet address, preventing address clustering.
+
+### C. Privacy Boundary and Relayers
+- **The On-Chain Privacy Reality**: In public EVM networks, the transaction sender (`msg.sender`) is visible in transaction headers.
+- While the zk-SNARK proof conceals which Merkle leaf and ballot choice belong to the voter, submitting a transaction directly from a personal wallet leaks that the wallet owner cast *some* ballot.
+- **Relayer Architecture (Optional for Production)**: To achieve complete unlinkability between the transaction sender and the voter, transactions should be routed through a third-party relayer (e.g., an ERC-4337 Paymaster, Gelato Relayer, or private relayer pool) that pays gas and broadcasts the transaction.
+- **Contract Decoupling**: `Voting.sol` does **not** record or emit `msg.sender` in voting events:
+  ```solidity
+  event VoteSubmitted(uint256 indexed nullifierHash, uint256 voteCommitment);
+  ```
+
+### D. Commit-Reveal Tallying Model
+- **Commit Phase (Voting Window)**: Voters submit `(proof, publicSignals)`. The contract verifies the proof and stores `validCommitments[voteCommitment] = true`. The ballot choice remains hidden.
+- **Reveal Phase (Tallying Window)**: A voter reveals `(voteOption, salt)`. The contract calculates `Poseidon(voteOption, salt)` on-chain using an EVM Poseidon hasher contract. If the commitment exists and has not been revealed, the contract increments `votesForOption0` or `votesForOption1`.
+- **Honest Limitations**:
+  1. Unrevealed commitments are not counted in the final tally.
+  2. This demo does not claim homomorphic real-time tallies. Real-time private tallies without reveals require additively homomorphic encryption (e.g., Paillier, ElGamal) or MPC threshold decryption.
+
+---
+
+## 3. Threat Model and Non-Goals
+
+### Threat Model
+| Threat | Mitigation in This Prototype |
+| :--- | :--- |
+| **Ineligible Voter Injection** | Prover must provide valid Merkle path to `approvedMerkleRoot`. |
+| **Double Voting** | Single-use `nullifierHash` per `proposalId` enforced in smart contract. |
+| **Ballot Tampering** | Groth16 zero-knowledge proof verifies binary vote ($v \in \{0, 1\}$) and commitment binding. |
+| **Front-Running Vote Choice** | Vote choices are blinded by random 256-bit salt until the reveal phase. |
+| **Replay Attacks across Proposals** | `proposalId` is an explicit public signal in circuit and smart contract. |
+
+### Non-Goals (Educational Prototype Scope)
+- **Coercion Resistance**: Because a voter knows their salt and secret, they can prove their vote to a third party (receipt-freeness requires MACI or randomized encryption).
+- **Sybil Resistance of Root**: Tree construction is assumed to be managed by DAO governance.
+- **Off-Chain Relayer Infrastructure**: This prototype provides the decoupled smart contract interface; a production relayer network is not bundled.
+
+---
+
+## 4. Empirical Benchmark Results
+
+All benchmarks reported below were measured empirically across **10 consecutive iterations** on the 3530-constraint Merkle tree circuit using SnarkJS WASM on CPU:
+
+```
+GPU proving: not configured; SnarkJS WASM benchmark executed on CPU.
+```
+
+| Metric | Measured Value | Methodology / Notes |
+| :--- | :--- | :--- |
+| **Circuit Constraints** | **3530** | Verified via `snarkjs r1cs info circuits/build/voting.r1cs` |
+| **Average Proof Generation Time** | **152.44 ms** | Min: 141.4 ms, Max: 168.0 ms (10 iterations) |
+| **Average Verification Time** | **8.73 ms** | JavaScript / Alt-BN128 pairing verification |
+| **Process Heap Memory** | **8.88 MB** | Peak Node.js process heap allocation |
+| **Resident Set Size (RSS)** | **544.59 MB** | Process memory resident in RAM |
+
+> **Hardware Feasibility Note**:
+> Because memory consumption during client-side WASM proof generation remains below 10 MB heap, this architecture executes comfortably in browser WebAssembly on laptops with **8GB RAM** without thread starvation.
+
+---
+
+## 5. Repository Structure
+
+```
 zk-private-voting/
 ├── circuits/
-│   ├── voting.circom            # Circom 2.2 ZK circuit for voting logic (434 constraints)
-│   ├── input.json               # Sample input for witness generation
-│   └── build/                   # Generated artifacts (R1CS, WASM, zkey)
+│   ├── voting.circom            # Circom 2.2 circuit (Merkle membership + nullifiers)
+│   ├── input.json               # Valid inputs for witness generation (Leaf #0)
+│   └── build/                   # Compiled R1CS, WASM, zkey, verification key
 ├── contracts/
-│   ├── IVerifier.sol            # Verifier interface
-│   ├── Verifier.sol             # Groth16 Alt-BN128 pairing verifier (EIP-196/197)
-│   ├── Voting.sol               # Core voting contract with double-voting immunity
-│   └── test/                    # Hardhat unit tests
-│       ├── MockVerifier.sol     # Mock verifier for edge-case unit testing
-│       └── Voting.test.js       # Unit tests (11 passing tests)
+│   ├── IPoseidon.sol            # On-chain Poseidon(2) interface
+│   ├── IVerifier.sol            # Groth16 Verifier interface (uint256[4] input)
+│   ├── Verifier.sol             # Generated Groth16 Alt-BN128 verifier contract
+│   ├── Voting.sol               # Core voting contract with commit-reveal and nullifiers
+│   └── test/
+│       ├── MockVerifier.sol     # Unit test mock verifier
+│       └── Voting.test.js       # 14 unit & real Groth16 integration tests
 ├── scripts/
-│   ├── compileCircuit.js        # Compiles Circom -> R1CS/WASM with native compiler
-│   ├── generateProof.js         # Generates witness & Groth16 proof
-│   ├── deploy.js                # Deploys Verifier.sol & Voting.sol to Polygon
-│   └── benchmark.js             # 10-iteration real empirical benchmark
+│   ├── merkleTree.js            # 16-leaf Poseidon Merkle tree helper
+│   ├── compileCircuit.js        # Compiles Circom to R1CS, WASM, and SYM
+│   ├── setupGroth16.js          # Powers of Tau ceremony (pot12) and zkey export
+│   ├── generateProof.js         # Generates proof and exports Solidity calldata
+│   ├── benchmark.js             # 10-iteration empirical benchmark runner
+│   └── deploy.js                # Deploys Verifier, Poseidon, and Voting to Polygon Amoy
 ├── frontend/
-│   ├── index.html               # Frontend HTML5 entry
-│   ├── vite.config.js           # Vite development server
-│   ├── tailwind.config.js       # Dark-mode styling
-│   ├── package.json             # React 18, Wagmi v2, Viem, SnarkJS
-│   └── src/
-│       ├── components/
-│       │   ├── Navbar.jsx           # Wallet connection & network badge
-│       │   ├── ProofGenerator.jsx   # Client-side WASM proof generation UI
-│       │   └── VotingInterface.jsx  # Option selection & ballot casting
-│       ├── hooks/
-│       │   ├── useVoting.js         # Wagmi v2 contract hooks
-│       │   └── useProof.js          # In-browser ZK proof generation hook
-│       ├── pages/
-│       │   ├── Vote.jsx             # Active ballot voting page
-│       │   └── Results.jsx          # Real-time percentage tally results
-│       ├── config/
-│       │   ├── wagmi.js             # Wagmi configuration
-│       │   └── contracts.js         # ABI and contract addresses
-│       ├── App.jsx                  # Main application router
-│       └── index.js                 # React root entry
+│   ├── src/
+│   │   ├── components/          # Navbar, VotingInterface, ProofGenerator
+│   │   ├── hooks/               # useProof (WASM Groth16), useVoting (Wagmi v2)
+│   │   ├── config/              # wagmi.js (Amoy), contracts.js, merkle.js
+│   │   └── pages/               # Vote, Results, Benchmark
+│   └── public/circuits/         # Static voting.wasm and voting_final.zkey
 ├── colab/
-│   └── ZK_Private_Voting_Colab.ipynb # Google Colab notebook
-├── hardhat.config.js            # Hardhat config (Optimizer 200 runs, Polygon)
-├── package.json                 # Root dependencies
-├── .env.example                 # Environment variables template
-├── LICENSE                      # MIT License
-└── README.md                    # Setup and technical documentation
+│   └── ZK_Private_Voting_Colab.ipynb # Google Colab reproducible notebook
+├── hardhat.config.js            # Polygon Amoy & Local network configuration
+├── AUDIT_REPORT.md              # Complete security audit and discrepancy report
+├── benchmark_results.json       # Machine-readable empirical benchmark data
+├── benchmark_results.md         # Markdown benchmark report
+└── package.json                 # Project dependencies and npm scripts
 ```
 
 ---
 
-## Real Empirical Benchmark Results
+## 6. Local Setup and Validation Commands
 
-Measured across 10 iterations on the 434-constraint BN128 Circom circuit:
+### Prerequisites
+- Node.js v18+ or v20+
+- Native Circom binary (`circom --version` v2.1+) or root `./circom.exe`
 
-| Platform | Proof Generation Time | Memory Usage | Verification Time | Prover Engine | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Local Machine (Node.js/WASM)** | **84.1 ms** | **9.58 MB Heap / 393 MB RSS** | **8.9 ms** | **SnarkJS (CPU single-core)** | **Measured Live** |
-| Local Machine (C++ Rapidsnark) | 23.5 ms | < 50 MB RAM | 3.5 ms | Rapidsnark (x86_64 AVX2) | Calculated C++ Prover |
-| NVIDIA RTX 4060 (CUDA / ICICLE) | < 15 ms | 250 MB VRAM | < 1 ms | ICICLE / GPU MSM | GPU Prover |
-| Google Colab T4 (CUDA / ICICLE) | < 30 ms | 350 MB VRAM | < 2 ms | ICICLE / GPU MSM | Cloud GPU Prover |
-
-### Architecture and Performance Facts:
-1. **Poseidon Field Hash over BN128 Fr**: Standard SHA-256 requires over 54,000 R1CS constraints, causing slow proof generation and high memory usage. Poseidon reduces constraints to 434, keeping heap memory under 10 MB and proof generation under 85 ms on CPU.
-2. **Single-Constraint Eligibility**: Non-zero token balance verification (`tokenBalance >= 1`) is verified algebraically via multiplicative inverse `tokenBalance * inv === 1`, consuming strictly 1 constraint.
-3. **GPU vs CPU Reality**: SnarkJS runs in Node.js/WASM on the CPU. For small circuits (< 500 constraints), CPU proof generation takes only 84 ms. GPU provers (Rapidsnark/ICICLE) are primarily required for massive circuits exceeding 20,000 constraints.
-
----
-
-## Quick Start
-
-### 1. Installation
+### 1. Install Dependencies
 ```bash
-git clone https://github.com/your-username/zk-private-voting.git
-cd zk-private-voting
-npm install
+npm ci
 ```
 
-### 2. Run Smart Contract Tests
-Execute the unit test suite:
+### 2. Compile Solidity Smart Contracts
+```bash
+npx hardhat compile
+```
+*Expected output: `Compiled 5 Solidity files successfully (evm target: paris).`*
+
+### 3. Run Unit and Integration Tests
 ```bash
 npx hardhat test
 ```
+*Expected output:*
 ```
-  ZK-SNARK Private Voting System
-    Deployment
-      √ Should correctly set the verifier address
+  ZK Private Voting System (Educational Prototype)
+    Contract Deployment & Setup
+      √ Should correctly set verifier, poseidon, approved root, and proposalId
       √ Should initialize with zero votes
-      √ Should revert if deployed with zero address for verifier
-    Private Voting Execution
-      √ Should allow a voter to cast a valid private vote
-      √ Should PREVENT double voting with the same nullifier (Revert AlreadyVoted)
+      √ Should revert if deployed with zero addresses or zero root
+    Ballot Submission Verification
+      √ Should submit a valid vote and emit VoteSubmitted without voter address
+      √ Should reject vote with wrong Merkle root
+      √ Should reject vote with wrong proposal ID
       √ Should reject vote with zero nullifier or zero commitment
+      √ Should prevent double voting with the same nullifier
       √ Should reject vote when Verifier returns false (InvalidProof)
     Tally and Reveal Mechanics
-      √ Should reveal and increment tallies correctly
-      √ Should prevent revealing an unknown commitment
+      √ Should reveal and increment tallies correctly using on-chain Poseidon
+      √ Should reject reveal with incorrect salt or vote choice
+      √ Should reject invalid vote option (> 1)
       √ Should prevent revealing the same commitment twice
-      √ Should support atomic castAndRevealVote
+    Real Groth16 End-to-End Integration
+      √ Should successfully verify a genuine SnarkJS Groth16 proof with Groth16Verifier.sol
 
-  11 passing (817ms)
+  14 passing (2s)
 ```
 
-### 3. Circuit Compilation and Proof Pipeline
+### 4. Compile the Circom Circuit
 ```bash
-# 1. Compile Circom circuit to R1CS and WASM
 node scripts/compileCircuit.js
+```
 
-# 2. Generate real proof from circuits/input.json
+### 5. Check Circuit Constraints
+```bash
+snarkjs r1cs info circuits/build/voting.r1cs
+```
+*Expected output:*
+```
+[INFO]  snarkJS: Curve: bn-128
+[INFO]  snarkJS: # of Wires: 3538
+[INFO]  snarkJS: # of Constraints: 3530
+[INFO]  snarkJS: # of Private Inputs: 13
+[INFO]  snarkJS: # of Public Inputs: 0
+[INFO]  snarkJS: # of Labels: 5214
+[INFO]  snarkJS: # of Outputs: 4
+```
+
+### 6. Run Development Trusted Setup
+```bash
+node scripts/setupGroth16.js
+```
+
+### 7. Generate a Valid Proof
+```bash
 node scripts/generateProof.js
+```
 
-# 3. Run real empirical performance benchmarks
+### 8. Verify Proof Locally
+```bash
+snarkjs groth16 verify circuits/build/verification_key.json scripts/generated/public.json scripts/generated/proof.json
+```
+*Expected output: `[INFO] snarkJS: OK!`*
+
+### 9. Run Empirical Benchmark
+```bash
 node scripts/benchmark.js
 ```
 
-### 4. Deploy to Polygon Mumbai / Amoy Testnet
-1. Create your `.env` from `.env.example`:
+### 10. Build the Frontend
 ```bash
-cp .env.example .env
+cd frontend && npm ci && npm run build
 ```
+
+---
+
+## 7. Network Configuration: Polygon Amoy
+
+This project is configured exclusively for **Polygon Amoy Testnet** (Sepolia-anchored). Polygon Mumbai is deprecated.
+
+- **Network Name**: Polygon Amoy Testnet
+- **Chain ID**: `80002`
+- **Currency**: POL (formerly MATIC)
+- **Public RPC**: `https://rpc-amoy.polygon.technology` (or via `AMOY_RPC_URL`)
+- **Block Explorer**: `https://amoy.polygonscan.com`
+- **Testnet Faucet**: `https://faucet.polygon.technology`
+
+### Deployment to Amoy
+1. Configure `.env`:
+   ```bash
+   cp .env.example .env
+   ```
 2. Populate `PRIVATE_KEY` and `POLYGONSCAN_API_KEY`.
-3. Run deployment:
-```bash
-npm run deploy:mumbai
-# or Polygon Amoy:
-npm run deploy:amoy
-```
-
-### 5. Run Frontend Application
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+3. Deploy:
+   ```bash
+   npx hardhat run scripts/deploy.js --network amoy
+   ```
 
 ---
 
-## Running in Google Colab
+## 8. Pragma Mumbai Demo Checklist
 
-1. Open Google Colab and upload `colab/ZK_Private_Voting_Colab.ipynb`.
-2. Change runtime to T4 GPU (`Runtime -> Change runtime type -> T4 GPU`).
-3. Run cells in sequence:
-   - Cell 1 verifies GPU environment.
-   - Cell 2 installs Circom and SnarkJS.
-   - Cell 3 compiles the circuit and conducts the Powers of Tau ceremony.
-   - Cell 4 runs the smart contract tests and deployments.
-   - Cell 5 launches the frontend and tunnels via pyngrok.
-   - Cell 6 generates the real benchmark comparison table.
+When demonstrating this project live at Pragma Mumbai:
 
----
-
-## Security Features
-- **Deterministic Nullifiers**: `nullifier = keccak256(walletAddress + proposalId) % BN128_R`. Prevents double voting without leaking the wallet address.
-- **Vote Blinding**: `voteCommitment = Poseidon(vote + salt)`. Conceals ballot choice until tallying.
-- **Reentrancy Protection**: Protected by OpenZeppelin `ReentrancyGuard`.
-- **EVM Precompiles**: Verification executed via Ethereum precompiles `0x06`, `0x07`, and `0x08` for gas efficiency.
+1. **Clone & Setup**:
+   ```bash
+   git clone https://github.com/samudragupto/zk-private-voting.git
+   cd zk-private-voting && npm ci
+   ```
+2. **Execute Full Pipeline or Open Google Colab**:
+   Open `colab/ZK_Private_Voting_Colab.ipynb` and run cells top-to-bottom.
+3. **Inspect Circuit & Constraints**:
+   Run `snarkjs r1cs info circuits/build/voting.r1cs` to prove **3530 real constraints**.
+4. **Run On-Chain Tests**:
+   Run `npx hardhat test` to demonstrate the 14 passing unit and Groth16 integration tests.
+5. **Demonstrate Proof Generation**:
+   Run `node scripts/generateProof.js` to show browser-feasible proof calculation in ~150ms.
+6. **Deploy to Amoy or Local Node**:
+   Run `npx hardhat run scripts/deploy.js` to deploy `Verifier.sol`, `Poseidon(2)`, and `Voting.sol`.
+7. **Cast & Reveal**:
+   - In frontend or script, cast ballot with proof. Show `VoteSubmitted` event containing no wallet address.
+   - Reveal with `(vote, salt)`. Show `VoteRevealed` event and incremented tally.
+8. **Explain the Trade-offs**:
+   Conclude with the honest privacy boundary: transaction sender privacy requires a relayer.
 
 ---
 
 ## License
+
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.

@@ -26,31 +26,31 @@ export function Vote() {
         </h1>
 
         <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-3xl mb-6">
-          Proposal to allocate 50,000 MATIC from the community treasury to fund developers
-          building privacy-preserving zero-knowledge applications at Pragma Mumbai.
-          All votes are shielded with Groth16 proofs: your ballot choice and token holdings remain completely anonymous.
+          Community proposal to fund developer grants for builders creating privacy-preserving
+          zero-knowledge tooling at Pragma Mumbai. Ballot choices are blinded with Groth16 zk-SNARK
+          commitments and voter eligibility is verified via Merkle tree membership.
         </p>
 
-        {/* 3 Privacy Pillars */}
+        {/* 3 Privacy & Cryptographic Pillars */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-darkBorder/60 text-xs">
           <div className="flex items-start space-x-2.5">
             <div>
-              <span className="font-semibold text-slate-200 block">Shielded Identity</span>
-              <span className="text-slate-400">Wallet address is never recorded in the vote or tally</span>
+              <span className="font-semibold text-slate-200 block">Merkle Membership</span>
+              <span className="text-slate-400">Voter proves presence in approved tree without revealing leaf index</span>
             </div>
           </div>
 
           <div className="flex items-start space-x-2.5">
             <div>
               <span className="font-semibold text-slate-200 block">Double-Voting Immune</span>
-              <span className="text-slate-400">Cryptographic nullifiers strictly enforce 1 voter = 1 vote</span>
+              <span className="text-slate-400">Cryptographic nullifiers strictly enforce 1 voter = 1 vote per proposal</span>
             </div>
           </div>
 
           <div className="flex items-start space-x-2.5">
             <div>
-              <span className="font-semibold text-slate-200 block">Optimized Constraints</span>
-              <span className="text-slate-400">Sub-100ms client-side proof generation with 434 constraints</span>
+              <span className="font-semibold text-slate-200 block">Groth16 Verification</span>
+              <span className="text-slate-400">3530 R1CS constraints verified on-chain via Alt-BN128 pairing</span>
             </div>
           </div>
         </div>

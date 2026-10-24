@@ -2,71 +2,109 @@ pragma circom 2.0.0;
 
 /**
  * @title VotingCircuit
- * @notice Zero-Knowledge circuit for Private DAO Voting.
+ * @notice Educational Zero-Knowledge Private DAO Voting Circuit.
  *
- * Requirements Met:
- * 1. Proves voter eligibility: User must have tokenBalance >= 1 without revealing their identity.
- * 2. Proves vote validity: Vote must be strictly binary (0 or 1).
- * 3. Hides individual ballot: voteCommitment = Poseidon(vote + salt) or Poseidon([vote, salt]).
- * 4. Prevents double-voting: nullifierHash = Poseidon(nullifier) verified on-chain.
- * 5. Optimized for 8GB RAM & RTX 4060: Circuit produces minimal constraints (<150 constraints),
- *    enabling sub-1.5s proof generation on RTX 4060 and fast execution in Google Colab / browser WASM.
+ * Eligibility and Security Model:
+ * 1. Merkle Membership: Voter proves knowledge of `identitySecret` such that
+ *    `identityCommitment = Poseidon(identitySecret)` is a leaf in the approved `merkleRoot`.
+ * 2. Proposal Nullifier: `nullifierHash = Poseidon(identitySecret, proposalId)` prevents
+ *    double-voting per proposal without linking to wallet address or identity commitment.
+ * 3. Vote Choice Blinding: `voteCommitment = Poseidon(vote, salt)` conceals the ballot.
+ * 4. Binary Constraint: `vote * (vote - 1) === 0` strictly enforces 0 (Nay) or 1 (Yea).
  *
- * Note on Hashing:
- * Traditional SHA-256 in Circom requires ~27,000+ R1CS constraints per hash invocation (>54,000 total),
- * which strains low-memory systems (8GB RAM) and takes 15-30s in browser WASM.
- * We use the Poseidon hash function (native to BN128 scalar field Fr), keeping constraints minimal
- * (<150 constraints) and outputting single field elements perfectly suited for Solidity `uint256`.
+ * Public Signals (in exact order for Solidity verifier compatibility):
+ * 1. merkleRoot
+ * 2. proposalId
+ * 3. nullifierHash
+ * 4. voteCommitment
+ *
+ * Depth Parameter:
+ * Fixed at depth = 4 (supporting 16 demo voters). Clearly designated for educational demo purposes.
  */
 
 include "../node_modules/circomlib/circuits/poseidon.circom";
 
-template Voting() {
+template Voting(depth) {
     // ==========================================
     // 1. PRIVATE INPUT SIGNALS
     // ==========================================
-    signal input nullifier;     // Secret 256-bit identifier unique to the voter for this proposal
-    signal input vote;          // Binary vote choice (0 = Against / Option 0, 1 = For / Option 1)
-    signal input tokenBalance;   // Voter token balance (must be >= 1 for eligibility)
-    signal input salt;          // Secret 256-bit random blinding factor hiding the vote
+    signal input identitySecret;               // Private secret scalar known only to the voter
+    signal input merkleProof[depth];           // Sibling hashes along the Merkle authentication path
+    signal input merklePathIndices[depth];     // Direction bit (0 = left, 1 = right) for each level
+    signal input vote;                         // Binary vote choice (0 or 1)
+    signal input salt;                         // Random blinding factor to conceal the vote
+
+    // Context signals provided by prover
+    signal input root;                         // Expected Merkle root
+    signal input proposal;                     // Unique proposal identifier
 
     // ==========================================
-    // 2. PUBLIC OUTPUT SIGNALS
+    // 2. PUBLIC OUTPUT SIGNALS (Exact Order)
     // ==========================================
-    signal output nullifierHash;    // Public commitment to nullifier (checked on-chain to prevent double voting)
-    signal output voteCommitment;   // Public commitment hiding the vote choice
+    signal output merkleRoot;                  // Public signal 1: Approved governance Merkle root
+    signal output proposalId;                  // Public signal 2: Governance proposal ID
+    signal output nullifierHash;               // Public signal 3: Nullifier hash preventing double voting
+    signal output voteCommitment;              // Public signal 4: Blinded ballot commitment
+
+    // Bind public context outputs
+    merkleRoot <== root;
+    proposalId <== proposal;
 
     // ==========================================
     // 3. CONSTRAINTS
     // ==========================================
 
-    // Constraint 1: Vote must be strictly binary: vote * (vote - 1) === 0
-    // If vote is 0: 0 * (-1) = 0.
-    // If vote is 1: 1 * 0 = 0.
-    // Any other value will cause an unsatisfiable constraint.
+    // Constraint 1: Vote must be binary (0 or 1)
     vote * (vote - 1) === 0;
 
-    // Constraint 2: Eligibility Check (tokenBalance >= 1)
-    // In finite field arithmetic, for a valid non-zero token balance (>= 1),
-    // there exists a multiplicative inverse `inv` such that: tokenBalance * inv === 1.
-    // If tokenBalance === 0, 0 * inv = 0 != 1 (prover fails).
-    // This provides a strict, constant-time eligibility constraint in exactly 1 R1CS constraint!
-    signal inv;
-    inv <-- tokenBalance != 0 ? 1 / tokenBalance : 0;
-    tokenBalance * inv === 1;
+    // Constraint 2: Compute Identity Commitment leaf = Poseidon(identitySecret)
+    component leafHasher = Poseidon(1);
+    leafHasher.inputs[0] <== identitySecret;
+    signal identityCommitment;
+    identityCommitment <== leafHasher.out;
 
-    // Constraint 3: Generate Nullifier Hash
-    // Prevents double-voting without linking the voter's Ethereum address.
-    // On-chain contract records `usedNullifiers[nullifierHash] = true`.
-    component nullifierHasher = Poseidon(1);
-    nullifierHasher.inputs[0] <== nullifier;
+    // Constraint 3: Verify Merkle Membership of Identity Commitment
+    signal currentHash[depth + 1];
+    currentHash[0] <== identityCommitment;
+
+    component levelHashers[depth];
+    signal left[depth];
+    signal right[depth];
+
+    for (var i = 0; i < depth; i++) {
+        // Enforce path index is binary (0 or 1)
+        merklePathIndices[i] * (merklePathIndices[i] - 1) === 0;
+
+        // Route left and right based on path index bit:
+        // If pathIndex == 0: left = current, right = proof
+        // If pathIndex == 1: left = proof, right = current
+        left[i] <== currentHash[i] + merklePathIndices[i] * (merkleProof[i] - currentHash[i]);
+        right[i] <== merkleProof[i] + merklePathIndices[i] * (currentHash[i] - merkleProof[i]);
+
+        levelHashers[i] = Poseidon(2);
+        levelHashers[i].inputs[0] <== left[i];
+        levelHashers[i].inputs[1] <== right[i];
+
+        currentHash[i + 1] <== levelHashers[i].out;
+    }
+
+    // Merkle root must match the expected public root
+    currentHash[depth] === root;
+
+    // Constraint 4: Generate Proposal-scoped Nullifier Hash
+    // nullifierHash = Poseidon(identitySecret, proposalId)
+    component nullifierHasher = Poseidon(2);
+    nullifierHasher.inputs[0] <== identitySecret;
+    nullifierHasher.inputs[1] <== proposal;
     nullifierHash <== nullifierHasher.out;
 
-    // Constraint 4: Generate Vote Commitment
-    // Computes commitment over (vote + salt) to blind the actual vote choice.
-    component voteHasher = Poseidon(1);
-    voteHasher.inputs[0] <== vote + salt;
+    // Constraint 5: Generate Vote Commitment
+    // voteCommitment = Poseidon(vote, salt)
+    component voteHasher = Poseidon(2);
+    voteHasher.inputs[0] <== vote;
+    voteHasher.inputs[1] <== salt;
     voteCommitment <== voteHasher.out;
 }
 
-component main = Voting();
+// Tree depth = 4 (16 authorized demo voters)
+component main = Voting(4);

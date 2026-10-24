@@ -16,13 +16,13 @@ export function Results() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-xs font-mono font-medium text-brand-400 uppercase tracking-wider">
-            Governance Dashboard
+            Governance Dashboard (Polygon Amoy)
           </span>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
             Real-Time Voting Results
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Tallies verified by on-chain zk-SNARK Groth16 Verifier
+            Tallies increment upon revealing committed ballots via on-chain Poseidon verification
           </p>
         </div>
 
@@ -105,12 +105,17 @@ export function Results() {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-darkCard border border-darkBorder">
             <span className="text-slate-400">Circuit Constraints:</span>
-            <span className="font-mono text-slate-200">434 Constraints (Poseidon BN128)</span>
+            <span className="font-mono text-slate-200">3530 Constraints (Depth 4 Merkle Tree + Poseidon BN128)</span>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-darkCard border border-darkBorder">
             <span className="text-slate-400">Proof System:</span>
-            <span className="font-mono text-slate-200">Groth16 zk-SNARK (Alt-BN128 Pairing)</span>
+            <span className="font-mono text-slate-200">Groth16 zk-SNARK (Alt-BN128 Pairing Precompile)</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-darkCard border border-darkBorder">
+            <span className="text-slate-400">Commit-Reveal Limitation:</span>
+            <span className="font-mono text-slate-300">Unrevealed commitments are not tallied; tallies update only upon reveal</span>
           </div>
         </div>
       </div>

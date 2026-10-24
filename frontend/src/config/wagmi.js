@@ -1,12 +1,11 @@
 import { http, createConfig } from "wagmi";
-import { polygonMumbai, polygonAmoy } from "wagmi/chains";
+import { polygonAmoy } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
 export const config = createConfig({
-  chains: [polygonMumbai, polygonAmoy],
+  chains: [polygonAmoy],
   connectors: [injected()],
   transports: {
-    [polygonMumbai.id]: http("https://rpc-mumbai.maticvigil.com"),
-    [polygonAmoy.id]: http("https://rpc-amoy.polygon.technology"),
+    [polygonAmoy.id]: http(import.meta.env.VITE_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology"),
   },
 });
