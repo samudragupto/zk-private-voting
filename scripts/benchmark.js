@@ -171,10 +171,14 @@ async function runBenchmark() {
 }
 
 if (require.main === module) {
-  runBenchmark().catch((err) => {
-    console.error("Benchmark error:", err);
-    process.exit(1);
-  });
+  runBenchmark()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("Benchmark error:", err);
+      process.exit(1);
+    });
 }
 
 module.exports = { runBenchmark };

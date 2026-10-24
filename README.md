@@ -15,7 +15,7 @@ flowchart TD
         A["Private Identity Secret"] --> B["identityCommitment = Poseidon(secret)"]
         B --> C["Merkle Membership Proof (Depth 4)"]
         A --> D["nullifierHash = Poseidon(secret, proposalId)"]
-        E["Vote (0 or 1)"] --> F["voteCommitment = Poseidon(vote, salt)"]
+        E["Vote: 0 or 1"] --> F["voteCommitment = Poseidon(vote, salt)"]
         G["Random Salt"] --> F
         C --> H["Circom 2.2 Circuit (3530 Constraints)"]
         D --> H
@@ -29,13 +29,13 @@ flowchart TD
         J --> K
         K -->|Step 1: Verify Proof| L["Groth16Verifier.sol (BN128 Pairing)"]
         L -->|Returns true| K
-        K -->|Enforce Root & Proposal| M["approvedMerkleRoot & proposalId"]
-        K -->|Check & Store| N["usedNullifiers[nullifierHash] = true"]
+        K -->|Enforce Root and Proposal| M["approvedMerkleRoot and proposalId"]
+        K -->|Check and Store| N["usedNullifiers[nullifierHash] = true"]
         K -->|Record Ballot| O["validCommitments[voteCommitment] = true"]
         
-        P["Reveal Phase: (vote, salt)"] --> K
-        K -->|Step 2: Poseidon(vote, salt)| Q["Poseidon(2) Hasher Contract"]
-        Q -->|Matches stored commitment| R["Increment votesForOption0 / votesForOption1"]
+        P["Reveal Phase: vote and salt"] --> K
+        K -->|Step 2: Verify Poseidon Preimage| Q["Poseidon Hasher Contract"]
+        Q -->|Matches stored commitment| R["Increment votesForOption0 or votesForOption1"]
     end
 ```
 

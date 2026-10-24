@@ -77,10 +77,14 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    console.error("Compilation error:", err);
-    process.exit(1);
-  });
+  main()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("Compilation error:", err);
+      process.exit(1);
+    });
 }
 
 module.exports = { main };
