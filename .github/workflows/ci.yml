@@ -1,0 +1,89 @@
+name: ZK Private Voting CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-zk-and-contracts:
+    name: Test ZK Proofs and Smart Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Compile Solidity contracts
+        run: npx hardhat compile
+
+      - name: Run Hardhat unit tests
+        run: npx hardhat test
+
+      - name: Execute Groth16 proof generation pipeline
+        run: node scripts/generateProof.js
+
+      - name: Run empirical performance benchmark
+        run: node scripts/benchmark.js
+
+  build-frontend:
+    name: Build Frontend Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Build frontend production bundle
+        run: |
+          cd frontend
+          npm run build
+
+  deploy-testnet:
+    name: Optional Polygon Testnet Deployment
+    needs: [test-zk-and-contracts, build-frontend]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Check deployment credentials and deploy
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          POLYGONSCAN_API_KEY: ${{ secrets.POLYGONSCAN_API_KEY }}
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+        run: |
+          if [ -z "$PRIVATE_KEY" ]; then
+            echo "Deployment notice: PRIVATE_KEY secret is not configured in repository secrets."
+            echo "Skipping live testnet deployment without failing the workflow."
+            exit 0
+          fi
+          echo "Deploying to Polygon Mumbai/Amoy..."
+          npx hardhat run scripts/deploy.js --network amoy || true

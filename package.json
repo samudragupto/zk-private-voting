@@ -1,0 +1,41 @@
+{
+  "name": "zk-private-voting",
+  "version": "1.0.0",
+  "description": "Production-ready Zero-Knowledge Private DAO Voting System on Polygon",
+  "main": "index.js",
+  "scripts": {
+    "compile:circuit": "node scripts/compileCircuit.js",
+    "prove": "node scripts/generateProof.js",
+    "benchmark": "node scripts/benchmark.js",
+    "compile:contracts": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:mumbai": "hardhat run scripts/deploy.js --network mumbai",
+    "deploy:amoy": "hardhat run scripts/deploy.js --network amoy",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+  },
+  "keywords": [
+    "zero-knowledge",
+    "zk-snarks",
+    "groth16",
+    "circom",
+    "snarkjs",
+    "polygon",
+    "ethereum",
+    "dao-voting",
+    "privacy"
+  ],
+  "author": "Pragma Mumbai ZK Team",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "dotenv": "^16.4.5",
+    "snarkjs": "^0.7.4"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.2",
+    "hardhat-gas-reporter": "^1.0.10"
+  }
+}

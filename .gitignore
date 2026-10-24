@@ -1,0 +1,30 @@
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Hardhat build artifacts
+cache/
+artifacts/
+
+# Frontend production build
+frontend/dist/
+
+# Binary downloads
+circom.exe
+*.exe
+
+# Intermediate Powers of Tau ceremony files (save repo size, keep final artifacts)
+circuits/build/pot*.ptau
+circuits/build/voting_0000.zkey
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
