@@ -71,7 +71,7 @@ export function Navbar({ activeTab, setActiveTab }) {
           <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-darkCard border border-darkBorder text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span className="text-slate-300 font-mono">
-              {chainId === 80001 ? "Polygon Mumbai" : chainId === 80002 ? "Polygon Amoy" : "Polygon Testnet"}
+              {chainId === 80002 ? "Polygon Amoy" : "Polygon Testnet"}
             </span>
           </div>
 

@@ -23,5 +23,9 @@
 | **Process Heap Used** | `9.65 MB` | Node.js process heap allocation |
 | **Resident Set Size (RSS)** | `540.33 MB` | Total process memory resident in RAM |
 
-> **Hardware & Disclosure Note**:
+> **Hardware & Disclosure Notes**:
 > All benchmarks reported above were executed on CPU using the SnarkJS WASM witness calculator and prover. No external GPU acceleration libraries (e.g., ICICLE, Rapidsnark CUDA) are bundled or executed in this run.
+>
+> On the benchmarked host, the 3,530-constraint circuit generated proofs in an average of 152.44 ms across 10 Node.js/SnarkJS WASM iterations. Browser performance may vary by device, operating system, available memory, and browser implementation.
+>
+> The benchmarked Node.js process used approximately 8.88 MB JavaScript heap and 544.59 MB resident memory (RSS). This is within the practical limits of an 8GB RAM development laptop, although browser memory use and performance may vary.

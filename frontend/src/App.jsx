@@ -111,18 +111,14 @@ function BenchmarkView() {
         <div className="glass-panel p-5 rounded-2xl border border-darkBorder space-y-2 text-xs">
           <h4 className="font-bold text-white text-sm">8GB RAM Feasibility</h4>
           <p className="text-slate-400 leading-relaxed">
-            With 3530 constraints for depth-4 Merkle membership and Poseidon hashing,
-            heap memory usage during client-side WASM proof calculation remains under 10 MB.
-            This runs comfortably in browser WebAssembly on laptops with 8GB RAM without memory pressure.
+            The benchmarked Node.js process used approximately 8.88 MB JavaScript heap and 544.59 MB resident memory (RSS). This is within the practical limits of an 8GB RAM development laptop, although browser memory use and performance may vary.
           </p>
         </div>
 
         <div className="glass-panel p-5 rounded-2xl border border-darkBorder space-y-2 text-xs">
           <h4 className="font-bold text-white text-sm">Prover Architecture & Honesty</h4>
           <p className="text-slate-400 leading-relaxed">
-            SnarkJS executes in WebAssembly on CPU threads. No proprietary GPU provers or synthetic
-            CUDA acceleration are bundled. Proof generation completes in ~152 ms on modern consumer CPUs,
-            making CPU proving fully viable for this voting workflow.
+            On the benchmarked host, the 3,530-constraint circuit generated proofs in an average of 152.44 ms across 10 Node.js/SnarkJS WASM iterations. Browser performance may vary by device, operating system, available memory, and browser implementation.
           </p>
         </div>
       </div>

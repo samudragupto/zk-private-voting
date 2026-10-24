@@ -58,20 +58,20 @@ flowchart TD
 - The nullifier is **not** derived from the Ethereum wallet address, preventing address clustering.
 
 ### C. Privacy Boundary and Relayers
-- **The On-Chain Privacy Reality**: In public EVM networks, the transaction sender (`msg.sender`) is visible in transaction headers.
-- While the zk-SNARK proof conceals which Merkle leaf and ballot choice belong to the voter, submitting a transaction directly from a personal wallet leaks that the wallet owner cast *some* ballot.
-- **Relayer Architecture (Optional for Production)**: To achieve complete unlinkability between the transaction sender and the voter, transactions should be routed through a third-party relayer (e.g., an ERC-4337 Paymaster, Gelato Relayer, or private relayer pool) that pays gas and broadcasts the transaction.
-- **Contract Decoupling**: `Voting.sol` does **not** record or emit `msg.sender` in voting events:
-  ```solidity
-  event VoteSubmitted(uint256 indexed nullifierHash, uint256 voteCommitment);
-  ```
+The ZK proof hides the approved Merkle-tree identity leaf and vote choice during the commit phase. However, a direct public-chain transaction exposes the sender address and transaction metadata. A relayer may improve sender–voter unlinkability, but privacy depends on relayer architecture, funding flow, timing analysis, network metadata, and operational assumptions.
+
+`Voting.sol` does not record or emit `msg.sender` in voting events:
+```solidity
+event VoteSubmitted(uint256 indexed nullifierHash, uint256 voteCommitment);
+```
 
 ### D. Commit-Reveal Tallying Model
 - **Commit Phase (Voting Window)**: Voters submit `(proof, publicSignals)`. The contract verifies the proof and stores `validCommitments[voteCommitment] = true`. The ballot choice remains hidden.
 - **Reveal Phase (Tallying Window)**: A voter reveals `(voteOption, salt)`. The contract calculates `Poseidon(voteOption, salt)` on-chain using an EVM Poseidon hasher contract. If the commitment exists and has not been revealed, the contract increments `votesForOption0` or `votesForOption1`.
 - **Honest Limitations**:
-  1. Unrevealed commitments are not counted in the final tally.
-  2. This demo does not claim homomorphic real-time tallies. Real-time private tallies without reveals require additively homomorphic encryption (e.g., Paillier, ElGamal) or MPC threshold decryption.
+  1. Reveal transactions are public. Vote secrecy lasts through the commit/voting phase; after a valid reveal, the selected vote option becomes publicly observable.
+  2. Unrevealed commitments are not counted in the final tally.
+  3. This demo does not claim homomorphic real-time tallies. Real-time private tallies without reveals require additively homomorphic encryption (e.g., Paillier, ElGamal) or MPC threshold decryption.
 
 ---
 
@@ -90,12 +90,21 @@ flowchart TD
 - **Coercion Resistance**: Because a voter knows their salt and secret, they can prove their vote to a third party (receipt-freeness requires MACI or randomized encryption).
 - **Sybil Resistance of Root**: Tree construction is assumed to be managed by DAO governance.
 - **Off-Chain Relayer Infrastructure**: This prototype provides the decoupled smart contract interface; a production relayer network is not bundled.
+- **Secure Identity Secret Management**: This educational prototype does not provide production-grade identity-secret backup, recovery, anti-phishing protection, hardware-wallet integration, or encrypted secret storage. Identity secrets must never be stored in plaintext browser localStorage in a production system.
 
 ---
 
-## 4. Empirical Benchmark Results
+## 4. Groth16 Trusted Setup Notice
 
-All benchmarks reported below were measured empirically across **10 consecutive iterations** on the 3530-constraint Merkle tree circuit using SnarkJS WASM on CPU:
+This repository uses a development-only Groth16 proving setup for reproducibility. The proving key and verifier must not be reused for production deployments unless a proper multi-party trusted setup ceremony is conducted and at least one participant securely destroys their toxic waste.
+
+The current pot12 setup supports circuits up to 2^12 constraints. The current circuit has 3,530 constraints. If the circuit grows, the Powers of Tau parameter must be upgraded.
+
+---
+
+## 5. Empirical Benchmark Results
+
+On the benchmarked host, the 3,530-constraint circuit generated proofs in an average of 152.44 ms across 10 Node.js/SnarkJS WASM iterations. Browser performance may vary by device, operating system, available memory, and browser implementation.
 
 ```
 GPU proving: not configured; SnarkJS WASM benchmark executed on CPU.
@@ -110,11 +119,11 @@ GPU proving: not configured; SnarkJS WASM benchmark executed on CPU.
 | **Resident Set Size (RSS)** | **544.59 MB** | Process memory resident in RAM |
 
 > **Hardware Feasibility Note**:
-> Because memory consumption during client-side WASM proof generation remains below 10 MB heap, this architecture executes comfortably in browser WebAssembly on laptops with **8GB RAM** without thread starvation.
+> The benchmarked Node.js process used approximately 8.88 MB JavaScript heap and 544.59 MB resident memory (RSS). This is within the practical limits of an 8GB RAM development laptop, although browser memory use and performance may vary.
 
 ---
 
-## 5. Repository Structure
+## 6. Repository Structure
 
 ```
 zk-private-voting/
@@ -155,7 +164,7 @@ zk-private-voting/
 
 ---
 
-## 6. Local Setup and Validation Commands
+## 7. Local Setup and Validation Commands
 
 ### Prerequisites
 - Node.js v18+ or v20+
@@ -249,13 +258,13 @@ cd frontend && npm ci && npm run build
 
 ---
 
-## 7. Network Configuration: Polygon Amoy
+## 8. Network Configuration: Polygon Amoy
 
-This project is configured exclusively for **Polygon Amoy Testnet** (Sepolia-anchored). Polygon Mumbai is deprecated.
+This project is configured exclusively for **Polygon Amoy Testnet** (Sepolia-anchored).
 
 - **Network Name**: Polygon Amoy Testnet
 - **Chain ID**: `80002`
-- **Currency**: POL (formerly MATIC)
+- **Currency**: POL
 - **Public RPC**: `https://rpc-amoy.polygon.technology` (or via `AMOY_RPC_URL`)
 - **Block Explorer**: `https://amoy.polygonscan.com`
 - **Testnet Faucet**: `https://faucet.polygon.technology`
@@ -273,7 +282,7 @@ This project is configured exclusively for **Polygon Amoy Testnet** (Sepolia-anc
 
 ---
 
-## 8. Pragma Mumbai Demo Checklist
+## 9. Pragma Mumbai Demo Checklist
 
 When demonstrating this project live at Pragma Mumbai:
 
@@ -289,7 +298,7 @@ When demonstrating this project live at Pragma Mumbai:
 4. **Run On-Chain Tests**:
    Run `npx hardhat test` to demonstrate the 14 passing unit and Groth16 integration tests.
 5. **Demonstrate Proof Generation**:
-   Run `node scripts/generateProof.js` to show browser-feasible proof calculation in ~150ms.
+   Run `node scripts/generateProof.js` to show proof generation in ~150ms on the host.
 6. **Deploy to Amoy or Local Node**:
    Run `npx hardhat run scripts/deploy.js` to deploy `Verifier.sol`, `Poseidon(2)`, and `Voting.sol`.
 7. **Cast & Reveal**:
@@ -297,6 +306,25 @@ When demonstrating this project live at Pragma Mumbai:
    - Reveal with `(vote, salt)`. Show `VoteRevealed` event and incremented tally.
 8. **Explain the Trade-offs**:
    Conclude with the honest privacy boundary: transaction sender privacy requires a relayer.
+
+---
+
+## What This Prototype Demonstrates
+- Merkle-tree-based eligibility instead of unverified token-balance inputs.
+- Secret-derived, proposal-specific nullifiers for double-voting prevention.
+- Groth16 proof generation and verification with Circom and SnarkJS.
+- Solidity integration with a generated Groth16 verifier.
+- Commit–reveal vote tallying with explicit privacy limitations.
+- Empirical CPU/WASM benchmarks without fabricated GPU claims.
+- A reproducible Google Colab and local development workflow.
+
+## What This Prototype Does Not Solve
+- Sender metadata privacy without a relayer.
+- Coercion resistance or receipt-freeness.
+- Production-grade trusted setup.
+- Homomorphic or threshold-encrypted private tallying.
+- Secure identity-secret management.
+- DAO governance or Sybil-resistance policy for Merkle-root construction.
 
 ---
 

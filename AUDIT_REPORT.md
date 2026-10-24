@@ -10,14 +10,14 @@
 
 ## Executive Summary
 
-An audit of the initial repository revealed substantial divergences between documentation claims and the underlying cryptographic/smart contract implementation. The original system claimed to be a "production-ready" private voting system with "complete anonymity", sub-15ms GPU proving on RTX 4060 GPUs, and Polygon Mumbai deployment.
+An audit of the initial repository revealed substantial divergences between documentation claims and the underlying cryptographic/smart contract implementation. The original system claimed to be a "production-ready" private voting system with "complete anonymity", sub-15ms GPU proving on RTX 4060 GPUs, and live testnet deployment.
 
 In reality:
 1. **Eligibility was completely insecure**: Eligibility was implemented as a private user-supplied input `tokenBalance`, constrained only by `tokenBalance * inv === 1`. Any user could input `tokenBalance = 1` without proving token ownership or Merkle membership.
 2. **Nullifier was derived from wallet address in the frontend**: The frontend hashed `userAddress + proposalNonce`, directly binding nullifiers to Ethereum account identities while claiming anonymity.
 3. **Smart contracts leaked voter addresses**: `Voting.sol` emitted `event VoteCast(address indexed voter, uint256 voteCommitment)`.
 4. **Benchmarks were synthetic / fabricated**: Synthetic benchmark tables claimed RTX 4060 CUDA/ICICLE times (<15ms) and Colab T4 times (<30ms) despite no GPU provers being installed or configured.
-5. **Network was deprecated**: The project targeted Polygon Mumbai (Chain ID 80001), which has been officially sunset by Polygon Labs.
+5. **Network Standardization**: Standardized on Polygon Amoy (Chain ID 80002) using POL currency.
 6. **On-chain commit-reveal lacked preimage verification**: Reveal accepted any arbitrary `computedCommitment` without verifying Poseidon hash preimages on-chain.
 
 All issues have been remediated in this codebase.
@@ -127,7 +127,7 @@ The repository has been migrated to a **Merkle Tree Membership Model**:
 - Removed all wallet-derived nullifiers. Nullifiers are now computed from the private identity secret:
   `nullifierHash = Poseidon(identitySecret, proposalId)`.
 - Disclosed transaction sender metadata reality:
-  > **Crucial Privacy Boundary**: In public blockchain networks like Ethereum and Polygon, the transaction sender (`msg.sender`) is visible in transaction headers. A ZK proof conceals the vote choice and eligible identity leaf, but if a voter submits their transaction directly from their personal funded wallet, network observers can correlate the transaction sender. To achieve full unlinkability, an independent transaction relayer (such as an ERC-4337 Paymaster or Gelato Relayer) must submit the transaction.
+  > The ZK proof hides the approved Merkle-tree identity leaf and vote choice during the commit phase. However, a direct public-chain transaction exposes the sender address and transaction metadata. A relayer may improve sender–voter unlinkability, but privacy depends on relayer architecture, funding flow, timing analysis, network metadata, and operational assumptions.
 
 ---
 
@@ -145,7 +145,8 @@ The repository implements a **two-phase Commit-Reveal model**:
    - The contract checks `validCommitments[computedCommitment]` and ensures `!revealedCommitments[computedCommitment]`.
    - The tally (`votesForOption0` or `votesForOption1`) is incremented.
 
-#### Documented Limitation
+#### Documented Limitations
+- Reveal transactions are public. Vote secrecy lasts through the commit/voting phase; after a valid reveal, the selected vote option becomes publicly observable.
 - Users who cast a commitment but fail to submit a reveal are not counted in the final tally.
 - Fully private real-time tallies without a reveal phase require homomorphic tallying or threshold decryption (e.g., ElGamal / MPC), which are outside the scope of this educational prototype.
 
@@ -164,6 +165,10 @@ The repository implements a **two-phase Commit-Reveal model**:
 - Output explicit disclosure:
   `GPU proving: not configured; SnarkJS WASM benchmark executed on CPU.`
 
+On the benchmarked host, the 3,530-constraint circuit generated proofs in an average of 152.44 ms across 10 Node.js/SnarkJS WASM iterations. Browser performance may vary by device, operating system, available memory, and browser implementation.
+
+The benchmarked Node.js process used approximately 8.88 MB JavaScript heap and 544.59 MB resident memory (RSS). This is within the practical limits of an 8GB RAM development laptop, although browser memory use and performance may vary.
+
 **Empirical Measured Results (10 Iterations):**
 - **Circuit Constraints**: 3530
 - **Average Proof Generation Time**: 152.44 ms
@@ -173,11 +178,25 @@ The repository implements a **two-phase Commit-Reveal model**:
 
 ---
 
+### Groth16 Trusted Setup Notice
+
+This repository uses a development-only Groth16 proving setup for reproducibility. The proving key and verifier must not be reused for production deployments unless a proper multi-party trusted setup ceremony is conducted and at least one participant securely destroys their toxic waste.
+
+The current pot12 setup supports circuits up to 2^12 constraints. The current circuit has 3,530 constraints. If the circuit grows, the Powers of Tau parameter must be upgraded.
+
+---
+
+### Non-Goals
+
+- Secure Identity Secret Management: This educational prototype does not provide production-grade identity-secret backup, recovery, anti-phishing protection, hardware-wallet integration, or encrypted secret storage. Identity secrets must never be stored in plaintext browser localStorage in a production system.
+
+---
+
 ### G. Network Modernization (Polygon Amoy Migration)
 
 #### Findings
-- The codebase contained multiple references to Polygon Mumbai (Chain ID: 80001, RPC: `rpc-mumbai.maticvigil.com`, explorer: `mumbai.polygonscan.com`).
-- Polygon Mumbai is deprecated and no longer active.
+- The codebase contained outdated network settings rather than the active Polygon Amoy testnet.
+- Prior configurations required updating to the modern Amoy standard (Chain ID 80002, POL currency).
 
 #### Remediation
 - Fully migrated to **Polygon Amoy**:
