@@ -4,9 +4,44 @@ import { useAccount, useConnect, useDisconnect, useChainId } from "wagmi";
 
 export function Navbar({ activeTab, setActiveTab }) {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
+
+  const handleConnect = async () => {
+    if (typeof window !== "undefined" && !window.ethereum) {
+      alert(
+        "MetaMask (or a compatible Web3 wallet) was not detected in this browser window.\n\n" +
+        "Please ensure MetaMask is installed from https://metamask.io and that the extension is active on localhost:3000."
+      );
+      return;
+    }
+
+    try {
+      const preferredConnector =
+        connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
+        connectors[0];
+
+      if (preferredConnector) {
+        connect(
+          { connector: preferredConnector },
+          {
+            onError: (err) => {
+              console.error("Wallet connection error:", err);
+              if (!err.message?.includes("User rejected")) {
+                alert(`Wallet connection failed: ${err.shortMessage || err.message}`);
+              }
+            },
+          }
+        );
+      } else {
+        alert("No compatible Web3 connector found in Wagmi.");
+      }
+    } catch (err) {
+      console.error("Connect execution failed:", err);
+      alert(`Connection failed: ${err.message || err}`);
+    }
+  };
 
   const truncateAddress = (addr) => {
     if (!addr) return "";
@@ -89,13 +124,13 @@ export function Navbar({ activeTab, setActiveTab }) {
             </div>
           ) : (
             <button
-              onClick={() => {
-                const injectedConnector = connectors[0];
-                if (injectedConnector) connect({ connector: injectedConnector });
-              }}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-zkPurple-600 hover:from-brand-500 hover:to-zkPurple-500 text-white text-sm font-semibold shadow-lg shadow-brand-500/25 transition-all transform hover:-translate-y-0.5"
+              onClick={handleConnect}
+              disabled={isPending}
+              className={`px-4 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-zkPurple-600 hover:from-brand-500 hover:to-zkPurple-500 text-white text-sm font-semibold shadow-lg shadow-brand-500/25 transition-all transform hover:-translate-y-0.5 ${
+                isPending ? "opacity-75 cursor-wait" : ""
+              }`}
             >
-              Connect Wallet
+              {isPending ? "Connecting..." : "Connect Wallet"}
             </button>
           )}
         </div>

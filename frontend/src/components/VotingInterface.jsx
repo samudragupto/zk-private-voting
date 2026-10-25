@@ -1,12 +1,12 @@
-// Purpose: Voting choice selector, ZK proof generation, and ballot submission/reveal interface.
 import React, { useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 import { useProof } from "../hooks/useProof";
 import { useVoting } from "../hooks/useVoting";
 import { ProofGenerator } from "./ProofGenerator";
 
 export function VotingInterface() {
   const { isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
   const [voterIndex, setVoterIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null); // 0 or 1
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
@@ -171,10 +171,23 @@ export function VotingInterface() {
       {/* Action Buttons: Cast Ballot & Reveal Ballot */}
       <div className="space-y-3">
         <button
-          disabled={selectedOption === null || !isConnected || isProving || isSubmitting}
-          onClick={handleSubmitVote}
+          disabled={isConnected && (selectedOption === null || isProving || isSubmitting)}
+          onClick={() => {
+            if (!isConnected) {
+              if (typeof window !== "undefined" && !window.ethereum) {
+                alert("MetaMask (or a compatible Web3 wallet) was not detected in this browser window.\n\nPlease install MetaMask from https://metamask.io.");
+                return;
+              }
+              const preferred =
+                connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
+                connectors[0];
+              if (preferred) connect({ connector: preferred });
+              return;
+            }
+            handleSubmitVote();
+          }}
           className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center space-x-2 transition-all transform ${
-            selectedOption === null || !isConnected || isProving || isSubmitting
+            isConnected && (selectedOption === null || isProving || isSubmitting)
               ? "bg-slate-800 text-slate-500 cursor-not-allowed"
               : "bg-gradient-to-r from-brand-600 via-zkPurple-600 to-brand-500 hover:from-brand-500 hover:to-zkPurple-500 text-white shadow-xl shadow-brand-500/25 hover:-translate-y-0.5"
           }`}
