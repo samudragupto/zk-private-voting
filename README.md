@@ -280,6 +280,24 @@ This project is configured exclusively for **Polygon Amoy Testnet** (Sepolia-anc
    npx hardhat run scripts/deploy.js --network amoy
    ```
 
+### Deployed Testnet Contract Addresses (Polygon Amoy)
+
+| Contract | Address | Polygonscan Explorer Link |
+| :--- | :--- | :--- |
+| **Groth16 Verifier** | `0xb8416cb4d82BA72b70C3EC55d7AC66b5DB415CF8` | [Explorer](https://amoy.polygonscan.com/address/0xb8416cb4d82BA72b70C3EC55d7AC66b5DB415CF8) |
+| **Poseidon(2) Hasher** | `0x2ab745F51002Ce236A9A2dA81cDaA553B87f28CD` | [Explorer](https://amoy.polygonscan.com/address/0x2ab745F51002Ce236A9A2dA81cDaA553B87f28CD) |
+| **Voting Contract** | `0xfeBEf266291E7994cC7724023C1442be83D010b1` | [Explorer](https://amoy.polygonscan.com/address/0xfeBEf266291E7994cC7724023C1442be83D010b1) |
+
+- **Demo Approved Merkle Root**: `17472554645224130603463831934347775944856028524999363438787688643257639181222`
+- **Demo Proposal ID**: `1`
+- **Active RPC Endpoints**:
+  - `https://polygon-amoy.drpc.org`
+  - `https://rpc.ankr.com/polygon_amoy`
+- **Testnet Faucets**:
+  - [Polygon Official Faucet](https://faucet.polygon.technology)
+  - [Amoy Faucet](https://amoyfaucet.com)
+  - [Chainlink Faucets](https://faucets.chain.link/polygon-amoy)
+
 ---
 
 ## 9. Pragma Mumbai Demo Checklist
