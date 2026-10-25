@@ -2,9 +2,10 @@ require("@nomicfoundation/hardhat-toolbox");
 require("hardhat-gas-reporter");
 require("dotenv").config();
 
-// Ensure a valid private key format even if .env is missing during tests
-const PRIVATE_KEY = process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length === 66
-  ? process.env.PRIVATE_KEY
+// Ensure a valid private key format (accepts 64 or 66 chars, with or without 0x)
+const rawKey = process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY.trim() : "";
+const PRIVATE_KEY = (rawKey.length === 64 || rawKey.length === 66)
+  ? (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`)
   : "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
